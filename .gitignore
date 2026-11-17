@@ -1,0 +1,30 @@
+__pycache__/
+.ipynb_checkpoints/
+.DS_Store
+*.wav
+scoreread.log
+.venv/
+
+# notes for the AI assistant: never in the repository (owner, 2026-11-17)
+CLAUDE.md
+
+# build output of scripts/build_mac_app.sh (the dmg go to GitHub Releases)
+build/
+dist/
+*.dmg
+
+# macOS crash reports
+*.ips
+
+# soundfont download folder: the soundfont and its licence are in musictools/data
+GeneralUser-GS/
+
+# personal notes, data and leftovers: not part of the repository (owner, 2026-11-17)
+da fare.txt
+ambiente_macbook.txt
+musictools 2/
+scale_update (1).zip
+routines/
+midi/
+duetti/
+debug_midi.py

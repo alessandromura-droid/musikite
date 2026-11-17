@@ -1,0 +1,16 @@
+"""musictools: Alessandro's music tools as one modular package."""
+from .check import require, check, prepare_fluidsynth
+require()            # stops here with what to install if required packages are missing
+prepare_fluidsynth() # lets pyfluidsynth find a FluidSynth library outside the default path
+from .midi import Midi, makeduet, midiplay, merge
+from .pdf import Pdf
+from .score import Score
+from .notes import Notes
+from .staffview import StaffView
+from .eartraining import IntervalQuiz
+from .reading import IntervalReadingQuiz
+from .progress import Progress
+from .gui import gui
+from .audio import audio_settings, audio_test, audio_panel, audio_devices
+
+__all__ = ["check", "Midi", "Pdf", "Score", "Notes", "StaffView", "IntervalQuiz", "IntervalReadingQuiz", "Progress", "gui", "audio_settings", "audio_test", "audio_panel", "audio_devices", "makeduet", "midiplay", "merge"]

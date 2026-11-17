@@ -1,0 +1,29 @@
+# MusiKitE: the REFERENCE versions = the MacBook where the app works (owner's rule:
+# the MacBook is the paradigm). Read 2026-11-06 from `pip freeze` of the MacBook:
+# Miniconda (Homebrew cask), environment base, Python 3.12.8.
+#
+#   python -m pip install -r requirements-macbook.txt
+#
+# C libraries (not pip): FluidSynth and PortAudio >= 19.7 from conda-forge, in the same
+# conda environment:   conda install -c conda-forge fluidsynth "portaudio>=19.7"
+# (PortAudio 19.6 makes the microphone crash: "libc++abi: terminating / Abort trap: 6").
+# `python -m musictools check` compares every Mac with this file.
+numpy==2.4.6
+pandas==3.0.1
+pretty_midi==0.2.11.post0
+music21==10.5.1
+PyMuPDF==1.27.2.3
+verovio==6.4.1
+svglib==2.3.3
+reportlab==5.1.0
+# PySide6 6.12 has no build for Intel Macs: 6.11.3 there (same functions for MusiKitE)
+PySide6==6.12.0; platform_machine != "x86_64"
+PySide6==6.11.3; platform_machine == "x86_64"
+pyfluidsynth==1.4.0
+sounddevice==0.5.5
+scipy==1.15.3
+mido==1.3.3
+# MIDI keyboard: not on the MacBook on 2026-11-06, needed by mido for the keyboard
+python-rtmidi
+ipywidgets==8.1.9
+jupyterlab==4.6.5

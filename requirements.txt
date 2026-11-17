@@ -1,0 +1,21 @@
+numpy
+pandas
+pretty_midi
+music21
+pymupdf
+verovio
+svglib
+reportlab
+PySide6
+pyfluidsynth
+sounddevice
+scipy
+mido
+python-rtmidi
+ipywidgets
+jupyterlab
+# The exact versions of the MacBook (the reference) are in requirements-macbook.txt.
+# Plus, not from pip, in the same conda environment (as on the MacBook):
+#   conda install -c conda-forge fluidsynth "portaudio>=19.7"
+# (PortAudio 19.6 makes the microphone crash: "libc++abi: terminating / Abort trap: 6")
+# and a General MIDI soundfont (.sf2), chosen in Settings > Soundfont

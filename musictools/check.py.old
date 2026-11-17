@@ -1,0 +1,238 @@
+"""
+Dependency check (no third-party imports here, so it works even when
+everything is missing).
+
+    python3 -m musictools check        full report, exit code 1 if something required is missing
+    musictools.check()                 same report from Jupyter (returns it as a dict)
+
+`import musictools` refuses to start (ImportError with the report) if a
+required Python package is missing. The commands printed use the SAME Python
+interpreter that is running (sys.executable), so packages end up where the
+program will look for them, also from Jupyter (%pip) vs. the command line.
+"""
+import importlib.util
+import os
+import shutil
+import sys
+import sysconfig
+
+MIN_PYTHON = (3, 10)
+# module -> pip package
+REQUIRED = {
+    "numpy": "numpy", "pandas": "pandas", "pretty_midi": "pretty_midi", "music21": "music21",
+    "pymupdf": "pymupdf", "verovio": "verovio", "svglib": "svglib", "reportlab": "reportlab",
+    "PySide6": "PySide6", "fluidsynth": "pyfluidsynth",
+}
+OPTIONAL = {
+    "sounddevice": ("sounddevice", "list of audio output devices, recording (future)"),
+    "ipywidgets": ("ipywidgets", "audio_panel() in Jupyter"),
+    "jupyterlab": ("jupyterlab", "the demo notebook"),
+}
+BREW_INSTALL = ('/bin/bash -c "$(curl -fsSL '
+                'https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"')
+PROJECT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def _missing(modules):
+    return [m for m in modules if importlib.util.find_spec(m) is None]
+
+
+def _externally_managed():
+    """True if pip refuses to install outside a virtual environment (PEP 668)."""
+    if sys.prefix != getattr(sys, "base_prefix", sys.prefix):
+        return False                                   # inside a venv
+    std = sysconfig.get_paths().get("stdlib", "")
+    return os.path.isfile(os.path.join(std, "EXTERNALLY-MANAGED"))
+
+
+def _pip_cmd(packages):
+    return f'"{sys.executable}" -m pip install ' + " ".join(packages)
+
+
+LIB_DIRS = ("/opt/homebrew/opt/fluid-synth/lib", "/opt/homebrew/lib",
+            "/usr/local/opt/fluid-synth/lib", "/usr/local/lib",
+            "/usr/lib", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu")
+LIB_NAMES = ("libfluidsynth.dylib", "libfluidsynth.3.dylib", "libfluidsynth.so.3",
+             "libfluidsynth.so")
+
+
+def find_fluidsynth_libs():
+    """Paths of the FluidSynth C library found on disk (Homebrew Intel/Apple
+    silicon, the running conda/venv prefix, system dirs)."""
+    dirs = []
+    if os.getenv("HOMEBREW_PREFIX"):
+        dirs.append(os.path.join(os.environ["HOMEBREW_PREFIX"], "lib"))
+    dirs.append(os.path.join(sys.prefix, "lib"))
+    dirs += LIB_DIRS
+    out = []
+    for d in dirs:
+        for n in LIB_NAMES:
+            p = os.path.realpath(os.path.join(d, n))
+            if os.path.isfile(p) and p not in out:
+                out.append(p)
+    return out
+
+
+def lib_archs(path):
+    """CPU architectures of a Mach-O library ('x86_64', 'arm64'); [] if unknown."""
+    import struct
+    cpu = {0x01000007: "x86_64", 0x0100000C: "arm64"}
+    try:
+        with open(path, "rb") as f:
+            head = f.read(8 + 20 * 8)
+    except OSError:
+        return []
+    magic = struct.unpack(">I", head[:4])[0]
+    if magic in (0xCAFEBABE,):                          # universal binary
+        n = struct.unpack(">I", head[4:8])[0]
+        return [cpu.get(struct.unpack(">I", head[8 + 20 * i:12 + 20 * i])[0], "?") for i in range(n)]
+    if magic in (0xCFFAEDFE, 0xCEFAEDFE):               # thin, little endian
+        return [cpu.get(struct.unpack("<I", head[4:8])[0], "?")]
+    return []
+
+
+def python_arch():
+    import platform
+    m = platform.machine()
+    return "arm64" if m in ("arm64", "aarch64") else m
+
+
+def prepare_fluidsynth():
+    """Make pyfluidsynth find a FluidSynth library installed outside the standard
+    search path (e.g. Homebrew on Apple silicon, the conda env): pyfluidsynth
+    falls back to $HOMEBREW_PREFIX/lib/libfluidsynth.dylib. Returns the library used."""
+    from ctypes.util import find_library
+    if any(find_library(n) for n in ("fluidsynth", "libfluidsynth")):
+        return None
+    for lib in find_fluidsynth_libs():
+        if lib.endswith(".dylib") and python_arch() in (lib_archs(lib) or [python_arch()]):
+            prefix = os.path.dirname(os.path.dirname(lib))
+            link = os.path.join(prefix, "lib", "libfluidsynth.dylib")
+            if os.path.exists(link):
+                os.environ["HOMEBREW_PREFIX"] = prefix
+                return link
+    return None
+
+
+def _fluidsynth_library():
+    """None if the FluidSynth C library loads, else the error text."""
+    try:
+        import fluidsynth  # noqa: F401  (pyfluidsynth loads the library at import)
+        return None
+    except ImportError as e:
+        if importlib.util.find_spec("fluidsynth") is None:
+            return "pyfluidsynth not installed"
+        return str(e) or "library not found"
+    except OSError as e:
+        return str(e)
+
+
+def report():
+    """Dict with errors (required), warnings (optional) and the commands to run."""
+    errors, warnings, commands, syscmds = [], [], [], []
+    mac = sys.platform == "darwin"
+    has_brew = shutil.which("brew") is not None
+
+    if sys.version_info < MIN_PYTHON:
+        errors.append(f"Python {sys.version.split()[0]}: {'.'.join(map(str, MIN_PYTHON))} or newer needed")
+
+    if importlib.util.find_spec("pip") is None:
+        errors.append("pip missing")
+        commands.append(f'"{sys.executable}" -m ensurepip --upgrade')
+
+    req = _missing(REQUIRED)
+    venv_mode = bool(req) and _externally_managed()
+    if req:
+        pk = [REQUIRED[m] for m in req]
+        errors.append("Python packages missing: " + ", ".join(pk))
+        if venv_mode:
+            venv = os.path.join(PROJECT, ".venv")
+            errors.append("this Python refuses pip installs outside a virtual environment "
+                          "(externally managed): create one for the project")
+            commands += [f'"{sys.executable}" -m venv "{venv}"']
+            commands += [f'"{venv}/bin/python" -m pip install {p}' for p in pk]
+            commands += [f'then start the program with "{venv}/bin/python" -m musictools …']
+        else:
+            commands += [_pip_cmd([p]) for p in pk]          # one per package: see which fails
+
+    # FluidSynth C library: look for it on disk, independently of pyfluidsynth
+    libs = find_fluidsynth_libs()
+    arch = python_arch()
+    if not libs:
+        errors.append("FluidSynth library (audio) not found")
+        if mac:
+            if not has_brew:
+                errors.append("Homebrew missing (needed to install FluidSynth)")
+                syscmds.append(BREW_INSTALL)
+            syscmds.append("brew install fluid-synth")
+        else:
+            syscmds.append("install the FluidSynth library (Linux: sudo apt install libfluidsynth3)")
+    elif "fluidsynth" not in req:
+        prepare_fluidsynth()
+        err = _fluidsynth_library()
+        if err:
+            good = [l for l in libs if arch in (lib_archs(l) or [arch])]
+            if mac and not good:
+                found = ", ".join(f"{l} ({'/'.join(lib_archs(l)) or '?'})" for l in libs)
+                errors.append(f"FluidSynth library found but for another CPU architecture: {found}; "
+                              f"this Python is {arch}")
+                if arch == "x86_64":
+                    syscmds.append("arch -x86_64 /usr/local/bin/brew install fluid-synth"
+                                   "    (Intel Homebrew, same architecture as this Python)")
+                else:
+                    syscmds.append("/opt/homebrew/bin/brew install fluid-synth"
+                                   "    (Apple silicon Homebrew, same architecture as this Python)")
+            else:
+                errors.append(f"FluidSynth library found ({', '.join(libs)}) but pyfluidsynth "
+                              f"cannot load it: {err}")
+
+    opt = _missing(OPTIONAL)
+    for m in opt:
+        warnings.append(f"optional package {OPTIONAL[m][0]} missing: {OPTIONAL[m][1]}")
+    if opt and not _externally_managed():
+        commands += [_pip_cmd([OPTIONAL[m][0]]) + "    (optional)" for m in opt]
+
+    for f in ("scoreread.py", "TrumpetFing.ttf"):
+        if not os.path.isfile(os.path.join(PROJECT, f)):
+            warnings.append(f"{f} not found in {PROJECT}: PDF reading disabled")
+
+    sf2 = None
+    try:
+        from .progress import settings
+        sf2 = settings().get("sf2")
+    except Exception:
+        pass
+    if not sf2 or not os.path.isfile(sf2):
+        warnings.append("no soundfont set: choose one (Audio > Soundfont… or Midi().add_sf2(path))")
+
+    return dict(ok=not errors, python=sys.executable, errors=errors, warnings=warnings,
+                commands=syscmds + commands)          # system libraries first, then Python
+
+
+def text(r=None):
+    r = r or report()
+    lines = [f"musictools dependency check  (Python: {r['python']})"]
+    lines += [f"  MISSING  {e}" for e in r["errors"]]
+    lines += [f"  warning  {w}" for w in r["warnings"]]
+    if r["ok"] and not r["warnings"]:
+        lines.append("  all OK")
+    elif r["ok"]:
+        lines.append("  required dependencies OK")
+    if r["commands"]:
+        lines.append("To install, run in the Terminal:")
+        lines += [f"  {c}" for c in r["commands"]]
+    return "\n".join(lines)
+
+
+def check(verbose=True):
+    r = report()
+    if verbose:
+        print(text(r))
+    return r
+
+
+def require():
+    """Called by `import musictools`: stop with a clear message if required
+    Python packages are missing (fast: does not import them)."""
+    if _missing(REQUIRED) or sys.version_info < MIN_PYTHON:
+        raise ImportError("\n" + text())
