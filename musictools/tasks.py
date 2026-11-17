@@ -636,7 +636,8 @@ def new_exercise(kind):
         ex_kind, purpose = (("play_reading", "reading") if kind == "duet"
                             else ("listen_repeat", "repeat"))
         q = dict(st.get("quick_exercises", {}).get(ex_kind) or {})
-        q = {k: v for k, v in q.items() if k in ("bars", "level", "instrument", "part")}
+        q = {k: v for k, v in q.items() if k in ("bars", "level", "instrument", "part",
+                                                 "key_sig")}
         if q.get("instrument") not in (None, *INSTRUMENTS):
             q["instrument"] = "Bb (trumpet)"   # transpositions hidden (owner, 2026-11-09)
         ph = exercise_from_duet(purpose, **q)

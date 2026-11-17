@@ -859,23 +859,74 @@ DUET_LEVEL = {1: 1, 2: 1, 3: 2, 4: 3, 5: 3}     # difficulty of the exercise -> 
 DUET_PARTS = ("random", "1", "2")
 
 
+# KEY OF THE RANDOM EXERCISES (owner, 2026-11-17: with the piano every random exercise was in
+# Bb — the duets are written in C for the Bb trumpet —; "the key must be random, no sharps or
+# flats for the easy levels, then more and more"): the WRITTEN key of the instrument played is
+# drawn among the keys with at most N sharps / flats (major or minor); "auto" = N from the
+# Simplify level. The trumpet reads in C at the easy levels as before.
+LEVEL_ACCIDENTALS = {1: 0, 2: 0, 3: 1, 4: 3, 5: 5}
+KEY_SIG_LABELS = {"auto": "auto (from Simplify)", 0: "none (C / Am)", 1: "up to 1 sharp / flat",
+                  2: "up to 2", 3: "up to 3", 4: "up to 4", 5: "up to 5", 6: "up to 6"}
+
+
+def key_sig_value(v):
+    """'auto' / 0..6 from a value or a label of KEY_SIG_LABELS."""
+    if v is None or v == "auto":
+        return "auto"
+    for k, t in KEY_SIG_LABELS.items():
+        if v == t:
+            return k
+    try:
+        return max(0, min(6, int(v)))
+    except (TypeError, ValueError):
+        return "auto"
+
+
+def random_written_key(max_accidentals, rng=None):
+    """A key name of progressions.KEYS (major or minor) with at most `max_accidentals`
+    sharps / flats in its key signature."""
+    from .progressions import KEYS, key_parts
+    from .theory import key_signature
+    rng = rng or random.Random()
+    cands = []
+    for k in KEYS:
+        tonic, minor = key_parts(k)
+        if abs(key_signature(tonic, "aeolian" if minor else "ionian")) <= int(max_accidentals):
+            cands.append(k)
+    return rng.choice(cands or ["C"])
+
+
 def exercise_from_duet(purpose="reading", bars=None, level=3, instrument="Bb (trumpet)",
-                       part="random", seed=None):
+                       part="random", seed=None, key_sig="auto"):
     """ONE exercise (Phrase) cut from a NEW duet for two trumpets (owner: Practice > Read &
     play is done on a random melody: a piece of a generated duet). part: '1', '2' or
     'random'; bars None = 8 (reading) / 2 (repeat); level = difficulty 1-5 (the duet level
     follows it, DUET_LEVEL); instrument as exercises_from_midi (the whole piece is first moved by
     octaves into its range: a trombone plays it an octave lower).
+    key_sig: at most this many sharps / flats in the WRITTEN key (0-6) or 'auto' (from the
+    level, LEVEL_ACCIDENTALS); the key is drawn at random for every exercise.
     The phrase keeps how it was made (`origin`), so a routine can make a new one each day."""
     import contextlib
     import io
     from .midi import Midi
+    from .progressions import key_parts, key_name, chords_to_key
+    from .duet import DEFAULT_CHORDS
     rng = random.Random(seed)
     level = int(level)
+    key_sig = key_sig_value(key_sig)
+    max_acc = LEVEL_ACCIDENTALS.get(level, 1) if key_sig == "auto" else int(key_sig)
+    trasp = INSTRUMENTS.get(instrument, (None,))[0]     # None: a hidden transposition
     for _ in range(8):
         dseed = rng.randrange(1000000)
+        duet_kw = {}
+        if trasp is not None:                    # the written key -> the concert key
+            tonic, minor = key_parts(random_written_key(max_acc, rng))
+            concert = key_name(tonic - trasp, minor)
+            duet_kw = dict(chords=chords_to_key(DEFAULT_CHORDS, "C", concert), key=concert,
+                           concert=True)
         with contextlib.redirect_stdout(io.StringIO()):
-            m = Midi().makeduet(level=DUET_LEVEL.get(level, 2), seed=dseed, rounds=2)
+            m = Midi().makeduet(level=DUET_LEVEL.get(level, 2), seed=dseed, rounds=2,
+                                **duet_kw)
         p = int(part) if str(part) in ("1", "2") else rng.choice((1, 2))
         st = exercises_from_midi(m, purpose=purpose, bars=bars, parts=[p - 1], level=level,
                                  instrument=instrument, seed=rng.randrange(1000000),
@@ -885,17 +936,20 @@ def exercise_from_duet(purpose="reading", bars=None, level=3, instrument="Bb (tr
             ph.part = PART_NAMES.get(instrument, ph.part)   # the instrument played, not
             ph.title = _title(ph)                           # "Trumpet in Bb 2" of the duet
             ph.origin = dict(ph.origin or {}, duet=dict(purpose=purpose, bars=bars, level=level,
-                                                        instrument=instrument, part=str(part)))
+                                                        instrument=instrument, part=str(part),
+                                                        key_sig=key_sig))
             return ph
     raise RuntimeError("no exercise could be cut from the duets (too few notes?)")
 
 
 def exercises_from_duets(count=5, purpose="reading", bars=None, level=3,
-                         instrument="Bb (trumpet)", part="random", seed=None):
-    """Generate > Read & play from duets: a group of `count` exercises, each from a new duet."""
+                         instrument="Bb (trumpet)", part="random", seed=None, key_sig="auto"):
+    """Generate > Read & play from duets: a group of `count` exercises, each from a new duet
+    (each in its own random key, see exercise_from_duet)."""
     rng = random.Random(seed)
     phrases = [exercise_from_duet(purpose, bars, level, instrument, part,
-                                  seed=rng.randrange(1 << 30)) for _ in range(int(count))]
+                                  seed=rng.randrange(1 << 30), key_sig=key_sig)
+               for _ in range(int(count))]
     label = {"reading": "Read & play", "repeat": "Listen & repeat"}.get(purpose, purpose)
     return ExerciseSet(phrases, f"{label} random – {len(phrases)} exercises (level {level}, "
                        f"{instrument.split(' (')[0]})", "duets", purpose)

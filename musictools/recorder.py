@@ -18,7 +18,7 @@ triplets).
 """
 import time
 
-from .realtime import click_events, midi_events, DRUM_CH
+from .realtime import click_events, midi_events, DRUM_CH, CLICK_SEQ_CH
 
 MAX_TAKE_S = 30 * 60                     # clicks scheduled for at most 30 minutes
 
@@ -47,19 +47,21 @@ class Recorder:
 
     def take_events(self, click=True, live_channel=15):
         """Real-time events of a take, t = 0 at the first event: one count-in bar of
-        clicks + clicks for the whole take (click=True; else none), and the parts
-        already recorded played back (overdub). Returns (events, lead seconds:
+        clicks (ALWAYS heard, owner 2026-11-17), the clicks of the whole take (metronome
+        events: the Click button of the Free player silences / restores them live,
+        Player.set_clicks_muted; `click` is kept for old calls and ignored), and the
+        parts already recorded played back (overdub). Returns (events, lead seconds:
         when the first beat of the music is heard). The channel used for the live
-        keyboard (live_channel, and channel 0 used by "from keyboard") is kept free."""
+        keyboard (live_channel, and channel 0 used by "from keyboard") and the
+        metronome's channel of play_sequenced (CLICK_SEQ_CH) are kept free."""
         spb = self.beat_q * 60.0 / self.bpm
-        lead = self.ts[0] * spb if click else 0.0
-        ev = []
-        if click:
-            n = self.ts[0] + int(MAX_TAKE_S / spb)
-            ev += click_events(n, spb, self.ts[0])
+        lead = self.ts[0] * spb
+        n = int(MAX_TAKE_S / spb)
+        ev = click_events(self.ts[0], spb, self.ts[0], prog=0)          # count-in: heard
+        ev += click_events(n, spb, self.ts[0], offset=lead)              # the take: Click button
         if self.parts:
             pm = self.to_midi().pm
-            free = [c for c in range(1, 15) if c not in (DRUM_CH, live_channel)]
+            free = [c for c in range(1, 15) if c not in (DRUM_CH, live_channel, CLICK_SEQ_CH)]
             chmap = {}
             for e in midi_events(pm, offset=lead):    # the keyboard keeps channels 0 and 15
                 if e[2] != DRUM_CH:

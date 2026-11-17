@@ -6,14 +6,25 @@ end = done (for the session: routines go on to the next item); Stop = nothing.
 
 Practice > Play over MIDI on a selected MIDI / score makes the exercise (in Objects) and
 opens it; Generate > Exercises to do > Play over MIDI only makes it; double click on it
-(or a routine) opens this tab bound to it."""
+(or a routine) opens this tab bound to it.
+
+EMPTY TAB (owner, 2026-11-17: opened from the menu with nothing selected it was a dead
+end): a MIDI, a PDF or a score is DRAGGED into it (from Objects > Material or from the
+Finder) or chosen with OPEN… (native dialog; the touch alternative of the drag, Android
+tablets); a file is opened as an object, a PDF is read to MIDI first (Convert > PDF → MIDI),
+then the exercise is made (Objects) and the tab is bound to it. A bound tab takes no drop
+and has no Open….
+CLICK BUTTON (owner, 2026-11-17): the "Click" box is replaced by the Click button of the
+bar (bar.click_button): beat of the bar while playing, press = clicks off / on at once."""
+
+FILE_TYPES = (".mid", ".midi", ".pdf", ".musicxml", ".xml", ".mxl")
 
 
 def playover_widget(app, obj=None):
     from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, QLabel,
                                    QSpinBox, QCheckBox, QListWidget, QListWidgetItem)
     from PySide6.QtCore import Qt
-    from .bar import action_bar, hscroll
+    from .bar import action_bar, hscroll, click_button
     from ..playover import MAX_TRACKS
 
     class PlayOverWidget(QWidget):
@@ -24,13 +35,18 @@ def playover_widget(app, obj=None):
             self.sv = None
             self._zoom = 1.0
             self.status = QLabel("")
+            self.click_btn = click_button(True, self._click_toggled)
             self.bar, self.buttons = action_bar(
                 [("Start", self.start, "count-in bar, then play the parts shown while the "
                                        "others are heard"),
                  ("Stop", self.stop, "stop (not counted as done)"),
+                 ("Open…", self.open_file, "choose a MIDI, a PDF or a score (or drag one "
+                                           "into this tab)"),
                  None,
                  ("Zoom +", lambda: self.zoom(1.25), "larger staff"),
-                 ("Zoom -", lambda: self.zoom(0.8), "smaller staff")], right=self.status)
+                 ("Zoom -", lambda: self.zoom(0.8), "smaller staff"),
+                 self.click_btn], right=self.status)
+            self.setAcceptDrops(True)
             lay = QVBoxLayout(self)
             box = QGroupBox("Settings")
             row = QHBoxLayout(box)
@@ -47,7 +63,6 @@ def playover_widget(app, obj=None):
             self.volume.setRange(0, 150)
             self.volume.setSuffix(" %")
             self.volume.setToolTip("volume of the other tracks")
-            self.click = QCheckBox("Click")
             acc = QLabel("Accomp.:")                       # short (owner): Click stays in view
             acc.setToolTip("volume of the accompaniment (the tracks not shown)")
             self.bar_a, self.bar_b = QSpinBox(), QSpinBox()      # bars to play (0 = all)
@@ -58,28 +73,131 @@ def playover_widget(app, obj=None):
                 sp.setToolTip(tip)
                 sp.editingFinished.connect(self._bars_changed)
             for wdg in (QLabel("Bars:"), self.bar_a, QLabel("to"), self.bar_b,
-                        QLabel("Tempo:"), self.tempo, acc, self.volume,
-                        self.click):
+                        QLabel("Tempo:"), self.tempo, acc, self.volume):
                 row.addWidget(wdg)
             row.addStretch(1)                         # compact: no gaps between the fields
             for wdg in (self.tempo, self.volume):
                 wdg.valueChanged.connect(self._settings_changed)
-            self.click.toggled.connect(self._settings_changed)
             lay.addWidget(hscroll(box))
             self.staff_box = QVBoxLayout()
             lay.addLayout(self.staff_box, 1)
-            self.info = QLabel("Select a MIDI or a score in Objects and choose Practice > "
-                               "Play over MIDI")
+            self.box = box
+            self.info = QLabel("Drag a MIDI, a PDF or a score here (from Objects or from the "
+                               "Finder), or press Open…")
             self.info.setWordWrap(True)
             self.info.setAlignment(Qt.AlignCenter)
             lay.addWidget(self.info)
             if obj is not None:
                 self.bind(obj)
+            else:
+                self.box.setEnabled(False)               # nothing to set until a MIDI comes
+
+        # ------------------------------------------------------ an empty tab: drag / Open…
+        def _paths(self, md):
+            return [u.toLocalFile() for u in md.urls()
+                    if u.toLocalFile().lower().endswith(FILE_TYPES)] if md.hasUrls() else []
+
+        def _drop_ok(self, e):
+            if self.obj is not None:                     # bound: no drop
+                return False
+            if e.source() is getattr(app, "mat_list", None):
+                return True
+            return bool(self._paths(e.mimeData()))
+
+        def dragEnterEvent(self, e):
+            if self._drop_ok(e):
+                e.acceptProposedAction()
+            else:
+                e.ignore()
+
+        def dragMoveEvent(self, e):
+            if self._drop_ok(e):
+                e.acceptProposedAction()
+            else:
+                e.ignore()
+
+        def dropEvent(self, e):
+            if not self._drop_ok(e):
+                return e.ignore()
+            e.acceptProposedAction()
+            if e.source() is getattr(app, "mat_list", None):
+                from ..midi import Midi
+                from ..score import Score
+                from ..pdf import Pdf
+                objs = app.selected_objects((Midi, Score, Pdf))
+                if not objs:
+                    self.info.setText("Drag a MIDI, a PDF or a score")
+                    return None
+                return self.use(objs[0], more=len(objs) - 1)
+            paths = self._paths(e.mimeData())
+            return self.use_file(paths[0], more=len(paths) - 1)
+
+        def open_file(self):
+            """Open…: the native dialog (the touch alternative of the drag)."""
+            from PySide6.QtWidgets import QFileDialog
+            from ..progress import folder
+            if self.obj is not None:
+                return None
+            path, _ = QFileDialog.getOpenFileName(
+                app.win, "Play over MIDI: open", folder("midi"),
+                "MIDI, PDF, MusicXML (*.mid *.midi *.pdf *.musicxml *.xml *.mxl)")
+            if not path:
+                return None                              # cancelled: nothing changes
+            return self.use_file(path)
+
+        def use_file(self, path, more=0):
+            """A file: opened as an object (Objects > Material), then used."""
+            name = app.open_file(path)
+            if isinstance(name, list):
+                name = name[0] if name else None
+            o = app.get_object(name) if name else None
+            if o is None:
+                self.info.setText(f"Cannot open {path} (see Log)")
+                return None
+            return self.use(o, more)
+
+        def use(self, src, more=0):
+            """A MIDI / score / PDF: a new Play over MIDI exercise (Objects), bound here. A PDF
+            is read to MIDI first (Convert > PDF → MIDI, the MIDI goes into Objects too)."""
+            from PySide6.QtWidgets import QApplication
+            from ..pdf import Pdf
+            from ..midi import Midi
+            from ..score import Score
+            if more:
+                app.log(f"Play over MIDI: only the first of {more + 1} is used")
+            if isinstance(src, Pdf):
+                self.info.setText("Reading the PDF…")
+                self.info.repaint()
+                name = app.run_tool("pdf2midi", src)
+                if isinstance(name, list):
+                    name = name[0] if name else None
+                src = app.get_object(name) if name else None
+                if src is None:
+                    self.info.setText("The PDF could not be read as MIDI (see the Log: View > "
+                                      "Log)")
+                    return None
+            if not isinstance(src, (Midi, Score)):
+                self.info.setText("Drag a MIDI, a PDF or a score")
+                return None
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            try:
+                po = _make(src)
+            except Exception as e:
+                self.info.setText(f"{type(e).__name__}: {e}")
+                app.log(f"Play over MIDI: {type(e).__name__}: {e}")
+                return None
+            finally:
+                QApplication.restoreOverrideCursor()
+            app.add_object(po, po.title)
+            app.refresh_exercises()
+            return self.bind(po)
 
         # ------------------------------------------------------ the exercise
         def bind(self, o):
             self.stop()
             self.obj = o
+            self.box.setEnabled(True)
+            self.buttons["Open…"].hide()                  # bound: no other MIDI here
             self._loading = True
             self.tracks.blockSignals(True)
             self.tracks.clear()
@@ -93,7 +211,7 @@ def playover_widget(app, obj=None):
             self._fit_tracks()
             self.tempo.setValue(o.tempo_pct)
             self.volume.setValue(o.volume_pct)
-            self.click.setChecked(o.click)
+            self.click_btn.set_on(o.click)
             n = o.n_bars()
             for sp in (self.bar_a, self.bar_b):
                 sp.setRange(0, n)
@@ -152,7 +270,15 @@ def playover_widget(app, obj=None):
                 return
             self.obj.tempo_pct = self.tempo.value()
             self.obj.volume_pct = self.volume.value()
-            self.obj.click = self.click.isChecked()
+            self.obj.click = self.click_btn.on
+
+        def _click_toggled(self, on):
+            """Click button: the clicks off / on at once (also while playing), kept in the
+            exercise."""
+            if self.obj is not None:
+                self.obj.click = bool(on)
+            if self.sv is not None:
+                self.sv.set_click(on)
 
         def _show_staff(self):
             from PySide6.QtWidgets import QApplication
@@ -184,6 +310,7 @@ def playover_widget(app, obj=None):
             self.sv.end_q = max(self.sv.end_q, self.obj.end_q())
             self.sv.on_end = self._finished
             self.sv.on_position = lambda beat, bar: self.status.setText(f"Bar {bar}")
+            self.sv.on_beat = self.click_btn.show_beat    # the beat on the Click button
             self.sv.set_position(0)                       # the first bar in the status
             self.info.setText(f"{self.obj.title}  (grade n/a: played to the end = done)")
             return self.sv
@@ -205,8 +332,9 @@ def playover_widget(app, obj=None):
             self.sv.tempo_pm = self.sv.midi.pm               # the MIDI's tempo map
             self.sv.q_offset = self.obj.start_q()            # the bars chosen
             self.sv.speed = self.obj.tempo_pct / 100.0
+            self.sv.click_audible = bool(self.obj.click)    # Click button: switched live
             try:
-                self.sv.play(start=0, count_in=1, click=self.obj.click, music=True)
+                self.sv.play(start=0, count_in=1, click=True, music=True)
             except Exception as e:
                 self.info.setText(f"{type(e).__name__}: {e}")
                 self.app.log(f"Play over MIDI: {type(e).__name__}: {e}")
@@ -265,7 +393,8 @@ def _track_choices(src):
 
 def _practice_factory(app):
     """Practice > Play over MIDI: on the selected MIDI / score -> a new exercise in Objects,
-    opened; nothing selected -> an empty tab saying what to do."""
+    opened; nothing selected -> an empty tab that takes a dragged MIDI / PDF / score or
+    Open…"""
     from ..midi import Midi
     from ..score import Score
     sel = app.selected_objects((Midi, Score))

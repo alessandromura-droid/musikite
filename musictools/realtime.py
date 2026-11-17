@@ -19,6 +19,12 @@ import time
 DRUM_CH = 9
 CLICK_ACCENT, CLICK_BEAT = 76, 77
 CLICK_DUR = 0.06
+CLICK_PROG = -1               # "program" field of the metronome events: Player.clicks_muted
+# play_sequenced (Free player recording): the metronome events (CLICK_PROG) are played on
+# their OWN channel with the drum kit, so that its volume (CC 7) can silence them while
+# the FluidSynth sequencer plays them (events already handed over cannot be skipped);
+# the recorder's playback never uses it
+CLICK_SEQ_CH = 13
 
 _players = {}                 # one running synth per soundfont
 
@@ -203,16 +209,19 @@ def midi_events(pm, start=0.0, scale=1.0, offset=0.0):
     return ev
 
 
-def click_events(n_beats, spb, beats_per_bar, first_beat=0, offset=0.0, vel=110):
+def click_events(n_beats, spb, beats_per_bar, first_beat=0, offset=0.0, vel=110,
+                 prog=CLICK_PROG):
     """Metronome: n_beats clicks every spb seconds; beat index first_beat+k,
-    accent when it is a multiple of beats_per_bar."""
+    accent when it is a multiple of beats_per_bar. prog: CLICK_PROG = clicks the Click
+    button can silence; 0 = always heard (the count-in of Play over MIDI and of the
+    Free player, owner 2026-11-17)."""
     ev = []
     for k in range(n_beats):
         t = offset + k * spb
         b = first_beat + k
         key = CLICK_ACCENT if b % beats_per_bar == 0 else CLICK_BEAT
-        ev.append((t, True, DRUM_CH, key, vel, 0))
-        ev.append((t + CLICK_DUR, False, DRUM_CH, key, 0, 0))
+        ev.append((t, True, DRUM_CH, key, vel, prog))
+        ev.append((t + CLICK_DUR, False, DRUM_CH, key, 0, prog))
     return ev
 
 
@@ -272,16 +281,21 @@ class Player:
         self.fs.program_select(DRUM_CH, self.sfid, 128, 0)
         self._programs = {}
         self._seq = None                   # FluidSynth sequencer of play_sequenced()
+        self.clicks_muted = False          # metronome events (CLICK_PROG) not played: the
+                                           # Click button of the tabs, also while playing
         self._thread = None
         self._stop = threading.Event()
         self.t0 = None                     # perf_counter of t = 0 of the current timeline
         self.duration = 0.0
 
     # ---------------------------------------------------------- control
-    def play(self, events, wait=False, delay=0.05):
+    def play(self, events, wait=False, delay=0.05, mute_clicks=False):
         """Play a list of events (t, on, ch, key, vel, program), t in seconds
-        from now + delay. Non-blocking unless wait=True."""
+        from now + delay. Non-blocking unless wait=True. mute_clicks: the metronome
+        events (program CLICK_PROG) are silent until `clicks_muted` is set False."""
         self.stop()
+        self.clicks_muted = bool(mute_clicks)
+        self.fs.cc(CLICK_SEQ_CH, 7, 100)       # volume of the channel back (play_sequenced)
         events = sorted(events, key=lambda e: (e[0], e[1]))     # note-offs before note-ons
         for t, on, ch, key, vel, prog in events:
             if on and ch != DRUM_CH and self._programs.get(ch) != prog:
@@ -296,7 +310,34 @@ class Player:
             self.wait()
         return self
 
-    def play_sequenced(self, events, delay=0.15):
+    def set_clicks_muted(self, muted):
+        """Metronome silent / heard from now on: play() skips the CLICK_PROG events,
+        play_sequenced() turns their channel's volume down / up."""
+        self.clicks_muted = bool(muted)
+        if self._seq is not None and getattr(self, "_seq_click_ch", None) == CLICK_SEQ_CH:
+            self.fs.cc(CLICK_SEQ_CH, 7, 0 if self.clicks_muted else 100)
+        return self
+
+    def _channel_type(self, ch, kind):
+        """FluidSynth channel type: 1 = drum, 0 = melodic (fluid_synth_set_channel_type,
+        called through pyfluidsynth's library handle when it has no wrapper). True if
+        done."""
+        try:
+            import ctypes
+            import fluidsynth
+            lib = getattr(fluidsynth, "_fl", None)
+            fn = getattr(lib, "fluid_synth_set_channel_type", None) if lib is not None else None
+            if fn is None:
+                return False
+            fn.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int]
+            fn.restype = ctypes.c_int
+            ok = fn(self.fs.synth, int(ch), int(kind)) == 0       # FLUID_OK
+            self._drum_seq = bool(ok and kind == 1)
+            return ok
+        except Exception:
+            return False
+
+    def play_sequenced(self, events, delay=0.15, mute_clicks=False):
         """Like play(), but the events are handed at once to FluidSynth's own
         sequencer, which plays them in step with the audio it renders (no Python
         thread: nothing a busy program does can delay a click). Used for the
@@ -306,8 +347,27 @@ class Player:
             import fluidsynth
             self.stop()
             events = sorted(events, key=lambda e: (e[0], e[1]))
+            # the metronome on its own channel (drum kit), silenced by its volume
+            click_ch = DRUM_CH
+            if any(e[5] == CLICK_PROG for e in events) and self._channel_type(CLICK_SEQ_CH, 1):
+                # a DRUM channel (owner, 2026-11-17: on a melodic channel the kit was not
+                # used and the click keys sounded as piano notes); back to melodic at stop
+                click_ch = CLICK_SEQ_CH
+                self.fs.program_select(CLICK_SEQ_CH, self.sfid, 128, 0)
+                self._programs[CLICK_SEQ_CH] = None        # play() selects its program again
+            # without the drum channel the clicks stay on the GM drum channel: heard,
+            # but the Click button cannot silence them during the take
+            self._seq_click_ch = click_ch
+            if click_ch == DRUM_CH and mute_clicks:      # cannot be silenced later: left out
+                events = [e for e in events if e[5] != CLICK_PROG]
+            events = [(t, on, click_ch, key, vel, prog) if prog == CLICK_PROG
+                      else (t, on, ch, key, vel, prog)
+                      for t, on, ch, key, vel, prog in events]
+            self.clicks_muted = bool(mute_clicks)
+            if click_ch == CLICK_SEQ_CH:
+                self.fs.cc(CLICK_SEQ_CH, 7, 0 if self.clicks_muted else 100)
             for t, on, ch, key, vel, prog in events:
-                if on and ch != DRUM_CH and self._programs.get(ch) != prog:
+                if on and ch not in (DRUM_CH, CLICK_SEQ_CH) and self._programs.get(ch) != prog:
                     self.fs.program_select(ch, self.sfid, 0, prog)
                     self._programs[ch] = prog
             seq = fluidsynth.Sequencer(time_scale=1000, use_system_timer=False)
@@ -327,7 +387,7 @@ class Player:
             return self
         except Exception as e:
             self.info["scheduler"] = f"python thread ({type(e).__name__}: {e})"
-            return self.play(events, delay=delay)
+            return self.play(events, delay=delay, mute_clicks=mute_clicks)
 
     def _run(self, events, t0):
         fs = self.fs
@@ -340,6 +400,8 @@ class Player:
                 time.sleep(dt - 0.002 if dt > 0.004 else 0.0002)
             if self._stop.is_set():
                 break
+            if on and self.clicks_muted and _ == CLICK_PROG:
+                continue
             if on:
                 fs.noteon(ch, key, vel)
             else:
@@ -362,6 +424,11 @@ class Player:
             self._thread.join(timeout=1.0)
         self._thread = None
         self._all_off()
+        self.fs.cc(CLICK_SEQ_CH, 7, 100)             # its volume back (play_sequenced)
+        if getattr(self, "_drum_seq", False):        # and melodic again (MIDI files use it)
+            self._channel_type(CLICK_SEQ_CH, 0)
+            self._drum_seq = False
+            self._programs[CLICK_SEQ_CH] = None
         return self
 
     def wait(self):

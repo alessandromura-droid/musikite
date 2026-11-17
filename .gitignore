@@ -8,10 +8,15 @@ scoreread.log
 # notes for the AI assistant: never in the repository (owner, 2026-11-17)
 CLAUDE.md
 
+howto.txt
+
 # build output of scripts/build_mac_app.sh (the dmg go to GitHub Releases)
 build/
 dist/
 *.dmg
+
+# Dock launcher of the source version, made by scripts/make_launcher.sh (per Mac)
+MusiKitE (source).app/
 
 # macOS crash reports
 *.ips

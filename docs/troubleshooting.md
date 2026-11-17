@@ -5,7 +5,7 @@
 ## First look: the Log
 
 Everything the app does, and every reason why something did not start, is written in the
-**Log** panel and in `~/.musikite/log.txt` (with the full error when something fails).
+**Log** panel (hidden at start: *View > Log*) and in `~/.musikite/log.txt` (with the full error when something fails).
 Problems reading PDFs are in `~/.musikite/scoreread.log`.
 
 ## Dependency check

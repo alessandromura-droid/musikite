@@ -7,7 +7,7 @@ exercises, in their order, as a routine (copies). Logic in tasks.py / phrase.py 
 from .registry import Tool, Param, register
 from .. import drills as dr
 from ..phrase import (LEVEL_LABELS, EXERCISE_INSTRUMENTS, INSTRUMENTS, DUET_PARTS,
-                      exercises_from_duets, instrument_range)
+                      KEY_SIG_LABELS, exercises_from_duets, instrument_range)
 from ..theory import note_name, parse_note
 
 SUB = "Exercises to do"
@@ -55,10 +55,11 @@ def _s(seed):
 def _random_tool(purpose):
     kind = {"reading": "play_reading", "repeat": "listen_repeat"}[purpose]
 
-    def f(count, bars, level, instrument, part, include_midi, seed):
+    def f(count, bars, level, instrument, part, include_midi, seed, key_sig="auto"):
         from ..exercise import exercise_settings
+        from ..phrase import key_sig_value
         st = exercises_from_duets(count, purpose, int(bars), _first_int(level), instrument,
-                                  part, _s(seed))
+                                  part, _s(seed), key_sig=key_sig_value(key_sig))
         for ph in st.phrases:                # tempo of the exercises: Settings > <type>
             ph.practice_bpm = float(exercise_settings(kind).get("bpm", 90))
             if not include_midi:             # do not include MIDI: no trace of the duet
@@ -81,6 +82,10 @@ for _purpose, _name, _label, _bars, _instr in (
                                 maximum=16),
                 Param("level", "choice", LEVEL_LABELS[3], "Simplify",
                       choices=tuple(LEVEL_LABELS.values())),
+                Param("key_sig", "choice", KEY_SIG_LABELS["auto"], "Key signature",
+                      choices=tuple(KEY_SIG_LABELS.values()),
+                      help="the written key of every exercise is drawn at random with at most "
+                           "this many sharps / flats; auto = from Simplify"),
                 Param("instrument", "choice", "Bb (trumpet)", "Instrument", choices=_instr),
                 Param("part", "choice", "random", "Part", choices=DUET_PARTS),
                 Param("include_midi", "bool", True, "Include the MIDI",

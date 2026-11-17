@@ -24,7 +24,7 @@ folders are shared by all users (one MIDI for 30 pupils); names of a user's own 
 | **Test sound** | A note and four clicks; reports what is active or why it failed. |
 | **Input device** | The microphone used by the exercises. |
 | **Test microphone** | A level meter (−60 … 0 dBFS). If nothing moves after 4 s, check the microphone permission (System Settings > Privacy & Security > Microphone) or choose another device. |
-| **MIDI input** | Your MIDI keyboard. |
+| **MIDI input** | Your MIDI keyboard, or **Computer keyboard** (the letters of the computer as a keyboard, see [Free player > Computer keyboard](free-player.md#computer-keyboard)). With no MIDI keyboard connected the computer keyboard is used. |
 | **Test MIDI** | Shows the last messages (note, velocity, channel, pedal, pitch bend) and plays them. If nothing arrives in 4 s: check the cable, *local control*, the port. |
 | **Keyboard sound** | The keys sound with the soundfont during exercises (turn off for keyboards with their own sound). |
 | **Recording offset (ms)** | Corrects a constant delay of the recordings of the Free player. |
@@ -62,4 +62,4 @@ names, Read & play, Listen & repeat):
 | **bpm** | Default tempo (Read & play 90). |
 | **Input** | Microphone or MIDI keyboard. |
 | **Show first note** | Read & play off, Listen & repeat on. |
-| **Click** | Metronome on by default. |
+| **Click** | First state of the **Click** button of the tab (audio click on). |

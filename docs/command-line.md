@@ -92,6 +92,7 @@ python3 -m musictools view part.pdf [--instrument trumpet]
 | Script | What it does |
 |---|---|
 | `scripts/build_mac_app.sh` | Builds the Mac app and its .dmg: see [Building the Mac app](building.md). |
+| `scripts/upload_release.sh` | Uploads the dmg on the Desktop to the GitHub Releases: see [Building the Mac app](building.md#publishing). |
 | `scripts/makeexercises.py FOLDER [--out DIR] [--lowest G3] [--highest C6] [--no-include_midi]` | Read & play exercises for the trumpet from **every MIDI** of a folder: every transformation × every key × tempo 50 / 100 / 150 %, keeping only those inside the range; each exercise rated 0–10 and saved as `exercises/trumpet/levelNN/exerciseNNNN_<key>.mke`. About 700 exercises per 16-bar duet. |
 | `scripts/rebuild_band.py FOLDER [--dry-run]` | FOLDER has one subfolder per instrument with the PDF parts: every PDF is read again into `<name>.from_pdf.mid`, the parts are grouped by song and every song is merged into `<song> - all parts.mid`. Deletes nothing. `--dry-run` only lists what it would do. |
 | `scripts/merge_midi.py IN1.mid IN2.mid … OUT.mid` | All the tracks in one MIDI, keeping the tempo map; refuses files with different tempi. |

@@ -8,9 +8,15 @@ Drills are exercises **made by the app**: *Practice > Long tones*, *Scales & arp
 Common to all of them:
 
 - The **settings are in the tab** and remembered per user.
-- **Start** makes **one new exercise** and records a take: one count-in bar, the clicks,
-  the cursor, then the notes coloured green / red and the grade.
+- The **exercise is shown at once**, made with the settings of the tab, and **made again
+  whenever you change a setting** that changes it (not tempo, the Click button, input,
+  metronome, volume). **New** makes another one with the same settings.
+- **Start** does the exercise shown and records a take: one count-in bar, the clicks, the
+  cursor, then the notes coloured green / red and the grade.
 - **Again** repeats the **same** exercise (the best attempt of the day counts).
+- **Click** (last button of the bar): the beat of the bar in colour during the take, and
+  the audio click on / off, also during the take; remembered with the settings. See
+  [The Click button](getting-started.md#the-click-button).
 - **Keep** puts the exercise in Objects at once (it goes there anyway after its first
   take); its takes then go into it.
 - Every exercise made with Start becomes an exercise ◆ in Objects with its attempts;
@@ -30,7 +36,7 @@ Long notes to hold in tune (microphone).
 | **Notes per exercise** | 1–12 notes chosen at random in the range. |
 | **Beats each** | Length of each note. |
 | **Rest beats** | Rest between notes (every note starts on a bar line). |
-| **bpm**, **Click** | |
+| **bpm** | |
 
 Under the staff a **chart** shows the pitch of each note in **cents** (−150 … +150), with
 dashed lines at ±50 cents: points beyond them are red. A note never within 50 cents is
@@ -49,7 +55,7 @@ reported as "out of tune, +100 c" instead of "not heard". Grading: see
 | **Instrument** | B♭ trumpet or C piano. |
 | **Lowest / Highest** | A scale that does not fit is not used (never folded). |
 | **Input** | Microphone or MIDI keyboard (the note **read**). |
-| **bpm**, **Click** | |
+| **bpm** | |
 
 Graded on the **order** of the notes only (timing is free): see
 [Grading](grading.md#scales-and-lip-slurs).
@@ -66,7 +72,7 @@ each.
 | **Level** | 1 2nd–3rd partial · 2 2nd–3rd–4th · 3 up to the 5th · 4 skips (2–4, 3–5) · 5 up to the 6th · 6 up to the 8th (the 7th, out of tune, is skipped). A level also uses the figures of the lower ones, its own most often. |
 | **Note value** | Basic note value; rhythms: even, long, long top note (tied over the bar line), long with a short end. |
 | **Highest** | A figure that goes above it is not used. |
-| **bpm**, **Click** | |
+| **bpm** | |
 
 The title says level, figure and rhythm. Graded on the order of the notes, like scales; a
 note tied over the bar line counts as one.
@@ -82,6 +88,9 @@ A rhythm on one note (B4, the middle line); you clap it, tap the space bar or pl
 | **Input** | *Clap* (microphone), *Key* (space bar), *MIDI keyboard*. |
 | **Metronome** | *High click (filtered)*: a pure high tone removed before the claps are searched, so the click is never mistaken for a clap · *Normal click* · *Count-in only* · *No metronome*. |
 | **Volume** | Volume of the clicks. |
+
+The **Click** button of the bar mutes the metronome chosen here (and switches it on again);
+with *No metronome* there is nothing to switch on.
 
 The grading is **lenient** with soft claps; see [Grading](grading.md#rhythm-reading).
 
@@ -99,7 +108,7 @@ appears big in the tab, and you have some clicks to arpeggiate it.
 | **Times** | The progression 1–4 times. |
 | **Show the notes** | Easy version: the chord tones and the right **tensions** of each chord are shown under its name, and the staff with the chords is visible. |
 | **Random** | Progression, key and clicks drawn at random at every new exercise. The instrument is never random. |
-| **bpm**, **Click** | |
+| **bpm** | |
 
 The exercise **loops**: after each take the next one starts by itself (the same exercise,
 or a new random one with *Random*), until **Stop**. The grade of the take just done stays

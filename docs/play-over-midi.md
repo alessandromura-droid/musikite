@@ -12,6 +12,12 @@ with the soundfont while you read up to three tracks on the staff — those trac
 
 - **Practice > Play over MIDI** on a selected MIDI (or score): makes the exercise ♬ in
   Objects and opens it.
+- **Practice > Play over MIDI** with nothing selected: an empty tab. **Drag** a MIDI, a
+  PDF or a score into it (from *Objects > Material* or from the Finder), or press
+  **Open…** to choose a file. A file is opened in Objects first; a PDF is read to MIDI
+  (as *Convert > PDF → MIDI*, the MIDI goes into Objects too). Then the exercise is made
+  and the tab shows it. On a tablet, Open… is the way (dragging between apps works only in
+  split screen).
 - **Generate > Exercises to do > Play over MIDI**: only makes it (e.g. for a
   [routine](routines.md)).
 
@@ -24,12 +30,13 @@ The exercise keeps the whole MIDI inside it, so it works even if the original fi
 | **Show and mute (up to 3)** | The tracks you read: shown together on one staff with one cursor, and not played. **No track is ticked by default**: choose yours. Two parts of the same instrument are numbered ("Trumpet in Bb 1", "… 2"). |
 | **Tempo %** | 25–200 % of the MIDI tempo. The tempo **map** of the MIDI is followed, tempo changes included. |
 | **Accomp.** | Volume of the accompaniment, %. |
-| **Click** | Metronome on / off. |
 | **Bars from / to** | Play only a passage. "start" / "end" = the whole piece. Bars are numbered as in the MIDI, and the staff keeps the original bar numbers. |
 | **Bar N** | The bar where the cursor is. Click on the staff (when stopped) to move the cursor and see the bar number. |
 
 **Start**: one count-in bar, then the cursor and the accompaniment from the first bar
-chosen. **Stop** stops.
+chosen. **Stop** stops. **Click** (last button of the bar): the beat of the bar in colour,
+and the metronome on / off at once, also while playing (off = no clicks after the count-in
+bar, which is always heard); kept in the exercise. See [The Click button](getting-started.md#the-click-button).
 
 Parts are shown **as written**: a trumpet in B♭ a tone above the sound, an alto sax in E♭
 a major sixth above, horn in F a fifth above; bass instruments in bass clef. A track whose

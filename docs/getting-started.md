@@ -13,7 +13,7 @@ The window has three panels and a log:
 | **Objects** (left) | Everything you have open: two lists, **Material** (MIDI, scores, PDFs, recordings) above and **Exercises** below. The divider between them can be moved. |
 | **Tabs** (centre) | Score views, exercises, routines, the practice diary… Each tab has its own buttons on top, under the tab name: changing tab changes the buttons. |
 | **Tools** (right) | The options of the Generate / Convert tool chosen, with a **Run** button. It closes by itself when it is no longer needed (e.g. when an exercise opens) and reappears with the next tool. *View > Tools* shows or hides it. |
-| **Log** (bottom) | What the app is doing, and why something did not start. Everything is also written to `~/.musikite/log.txt`. |
+| **Log** (bottom) | What the app is doing, and why something did not start. **Hidden at start**: *View > Log* shows it. Everything is also written to `~/.musikite/log.txt`. |
 
 With two or more tabs open, a last tab **Close all** closes them all (the objects stay).
 
@@ -88,7 +88,29 @@ This difference runs through the whole app:
   listens. (Listen & repeat first plays the phrase you must repeat: that is the question.)
 
 Inside an exercise tab the buttons are typically **Start** (then Pause / Resume),
-**Stop**, **Repeat** / **Again**, **Keep**, **Zoom +** / **Zoom −**.
+**Stop**, **Repeat** / **Again**, **Keep**, **Zoom +** / **Zoom −**, **Click**.
+
+### The Click button
+
+In every exercise with a staff (Read & play, Listen & repeat, the [drills](drills.md),
+[Play over MIDI](play-over-midi.md)) and in the [Free player](free-player.md) the last
+button of the bar is **Click**. It is two
+things in one:
+
+- a **visual metronome**: while a take runs it shows **Click 1**, **Click 2**, … (the beat
+  of the bar, also in the count-in bar) and its colour changes at every click: the
+  **first beat of the bar red**, then yellow, green, blue, and yellow again. In 3/4 it goes
+  red–yellow–green; 6/8 is counted in eighths, as its clicks; when the time signature
+  changes (scales with rhythm *varied*) the count follows it.
+- the **switch of the audio click**: press it to switch the click **off** (the text is
+  struck through; the colours and the count go on), press again to switch it on. It works
+  also **during a take**. In Play over MIDI and in the Free player the **count-in bar is
+  always heard**; "off" silences the clicks after it. Its first state comes from
+  [Settings > Exercises > *Click*](settings.md#exercises); the drills and Play over MIDI
+  remember it.
+
+With the click off from the start, Read & play aligns the recording on the delay of the
+audio device instead of the first click (as with headphones).
 
 ## The staff
 

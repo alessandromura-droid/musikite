@@ -329,20 +329,27 @@ class PlayCheck:
 
     def __init__(self, score, part=0, bars=None, bpm=90, trasp=TRASP, fs=FS, user=None,
                  sf2=None, prelude=None, gap_s=0.6, click=True, click_mode=None,
-                 click_gain=1.0, play_trasp=None, backing=None, detect_range=None):
+                 click_gain=1.0, play_trasp=None, backing=None, detect_range=None,
+                 instrument=None):
         """prelude: audio (float array at fs) played BEFORE the count-in (Listen &
         repeat: the phrase to repeat), followed by gap_s of silence.
-        click=False: no metronome at all (the cursor still moves; the delay of the
-        recording is then the device latency, there are no clicks to find).
+        click=False: the clicks are SILENT at the start (the cursor still moves; the
+        delay of the recording is then the device latency, there are no clicks to find);
+        the click track is built anyway, so `set_click(True)` during the take makes it
+        heard from then on (owner, 2026-11-17: the Click button of the tabs switches the
+        audio click on / off at any time).
         click_mode: 'normal' (default), 'high' (pure tones, see high_click_track),
-        'count_in' (only the count-in bar), 'none' (= click=False); click_gain: volume
-        of the clicks (0..1). play_trasp: transposition of the instrument really played
+        'count_in' (only the count-in bar), 'none' (no click track at all: set_click
+        cannot make one heard); click_gain: volume of the clicks (0..1). play_trasp: transposition of the instrument really played
         (Bb trumpet 2) when the part is written for another one (transposition
         exercises): the pitch detection keeps the range of the real instrument.
         backing: audio (float array at fs) MIXED into the click track, sample 0 = the
         first count-in click (Chord arpeggios: the chords, `chord_audio`).
         detect_range: (lowest, highest) CONCERT MIDI where the played notes are searched
-        (instruments other than the trumpet: phrase.DETECT_RANGE; None = the trumpet's)."""
+        (instruments other than the trumpet: phrase.DETECT_RANGE; None = the trumpet's).
+        instrument: the instrument played ('trumpet', 'piano'…): its profile in
+        `detect` chooses how the notes are found in the recording (sustained: as before;
+        decaying — the piano —: by attacks, see detect.py)."""
         self.score = excerpt(score, part, bars)
         self.part, self.bars = part, bars
         self.bpm, self.trasp, self.fs, self.user = float(bpm), trasp, fs, user
@@ -355,7 +362,7 @@ class PlayCheck:
         if sf2 is None:
             from .midi import Midi
             sf2 = Midi._default_sf2
-        mode = click_mode or ("normal" if click else "none")
+        mode = click_mode or "normal"
         self.click_mode = mode
         ts_objs = list(self.score.m21.parts[0].recurse().getElementsByClass("TimeSignature"))
         if len({t.ratioString for t in ts_objs}) > 1 and mode in ("normal", "high"):
@@ -366,23 +373,25 @@ class PlayCheck:
         else:
             self.click = click_track(fs, self.bpm, self.beats_bar, measures, self.beat_q, sf2)
         self.click = self.click * float(click_gain)
-        self.click_on = mode != "none"
+        self.click_audible = bool(click) and mode != "none"   # switched live by set_click
+        self.click_on = self.click_audible     # heard at the first click (set by start)
         if mode == "none":
             self.click = np.zeros_like(self.click)
         elif mode == "count_in":                    # silence after the count-in bar
             self.click[int(round(self.lead_q * 60.0 / self.bpm * fs)) - int(0.01 * fs):] = 0.0
-        if backing is not None:                     # chords etc. on the same clock
-            b = np.asarray(backing, dtype=float).ravel()
-            if len(b) > len(self.click):
-                self.click = np.concatenate([self.click, np.zeros(len(b) - len(self.click))])
-            self.click = self.click.astype(float)
-            self.click[:len(b)] += b
+        # chords etc. on the same clock, in their OWN track: switching the clicks off
+        # never silences them
+        self.backing = None if backing is None else np.asarray(backing, dtype=float).ravel()
         self.play_trasp = trasp if play_trasp is None else play_trasp
         self.detect_range = None if detect_range is None else tuple(detect_range)
+        from .detect import profile
+        self.instrument = instrument
+        self.profile = profile(instrument)
         self.taps = []                                        # key / pad taps (stream clock)
         self.prelude = None if prelude is None else np.asarray(prelude, dtype=np.float32)
         self.offset = 0 if self.prelude is None else len(self.prelude) + int(gap_s * fs)
-        self.duration = (self.offset + len(self.click)) / fs + 2.0   # recording length (s)
+        n_track = max(len(self.click), 0 if self.backing is None else len(self.backing))
+        self.duration = (self.offset + n_track) / fs + 2.0   # recording length (s)
         self.midi_played = []                                 # notes from a MIDI keyboard
         self.midi_written = False      # True (Read & play): the keyboard plays the WRITTEN note
         self.recording = None
@@ -397,10 +406,19 @@ class PlayCheck:
         import threading
         import time as _time
         import sounddevice as sd
-        parts = [] if self.prelude is None else [self.prelude,
-                                                  np.zeros(self.offset - len(self.prelude))]
-        out = np.concatenate(parts + [self.click, np.zeros(int(2.0 * self.fs))]).astype(np.float32)
-        n = len(out)
+        # two tracks of the same length: the clicks (switched live by set_click) and
+        # the rest (prelude, backing chords), always heard
+        off = self.offset
+        n_track = max(len(self.click), 0 if self.backing is None else len(self.backing))
+        n = off + n_track + int(2.0 * self.fs)
+        out_click = np.zeros(n, dtype=np.float32)
+        out_click[off:off + len(self.click)] = self.click
+        out = np.zeros(n, dtype=np.float32)
+        if self.prelude is not None:
+            out[:len(self.prelude)] = self.prelude
+        if self.backing is not None:
+            out[off:off + len(self.backing)] += self.backing
+        self.click_on = self.click_audible          # the first click heard: alignment
         self.recording = np.zeros(n, dtype=np.float32)
         self._pos = 0
         self._t_dac0 = None
@@ -414,7 +432,10 @@ class PlayCheck:
                 self._t_dac0 = tinfo.outputBufferDacTime
                 self._t_adc0 = tinfo.inputBufferAdcTime
                 self._perf0 = _time.perf_counter()
-            outdata[:k, 0] = out[i:i + k]
+            if self.click_audible:
+                outdata[:k, 0] = out[i:i + k] + out_click[i:i + k]
+            else:
+                outdata[:k, 0] = out[i:i + k]
             outdata[k:] = 0
             self.recording[i:i + k] = indata[:k, 0]
             self._pos = i + k
@@ -427,6 +448,13 @@ class PlayCheck:
         self._out_latency = float(self.stream.latency[1])
         self._stream_latency = float(sum(self.stream.latency))
         self.stream.start()
+        return self
+
+    def set_click(self, on):
+        """Clicks heard (True) or silent (False) from now on, also during the take (the
+        Click button of the tabs). Alignment uses the clicks only if the first count-in
+        click was heard (`click_on`, fixed at the start)."""
+        self.click_audible = bool(on) and self.click_mode != "none"
         return self
 
     def heard_time(self):
@@ -541,12 +569,23 @@ class PlayCheck:
             y = y[self.offset:]
             delay, how = self.align(y)
             y3 = y[max(0, int(round(self.fs * delay)) - 1):]
-            ok, nn, per = validate(y3, self.fs, self.events, self.bpm, self.trasp, self.lead_q)
-            played = [[s, d, p - self.trasp] for s, d, p in
-                      to_quarters(audio_notes(y3, self.fs, self.trasp,
-                                              range_trasp=self.play_trasp,
-                                              concert_range=self.detect_range),
-                                  self.bpm, 0.0, self.lead_q)]
+            if self.profile["family"] == "decaying":     # piano…: notes by their attacks
+                from .detect import decaying_validate, click_info
+                times, ref = click_info(self.click, self.fs) if self.click_mode != "none" \
+                    else ([], None)
+                ok, nn, per, found = decaying_validate(
+                    y3, self.fs, self.events, self.bpm, self.trasp, self.lead_q,
+                    self.profile["range"], times, ref)
+                played = to_quarters([[s, d, p] for s, d, p, _, _ in found],
+                                     self.bpm, 0.0, self.lead_q)
+            else:                                        # wind instruments: as before
+                ok, nn, per = validate(y3, self.fs, self.events, self.bpm, self.trasp,
+                                       self.lead_q)
+                played = [[s, d, p - self.trasp] for s, d, p in
+                          to_quarters(audio_notes(y3, self.fs, self.trasp,
+                                                  range_trasp=self.play_trasp,
+                                                  concert_range=self.detect_range),
+                                      self.bpm, 0.0, self.lead_q)]
         source = how
         frac = ok / nn if nn else 0.0
         items = []
@@ -716,9 +755,10 @@ class PlayQuiz:
         # written = sound + transposition of the exercise (Bb 2, C 0)
         # transposition exercise: the part is written for another trumpet, played on the Bb
         self.check = PlayCheck(score, 0, None, self.bpm, ph.transposition, user=self.user,
-                               prelude=prelude, click=self.click,
+                               prelude=prelude, click=self.click,   # set_click: live
                                play_trasp=TRASP if ph.read_as else None,
-                               detect_range=DETECT_RANGE.get(ph.instrument))
+                               detect_range=DETECT_RANGE.get(ph.instrument),
+                               instrument=ph.instrument)
         self.check.midi_written = self.mode == "reading" and not ph.read_as
         return question
 

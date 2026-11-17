@@ -4,7 +4,9 @@ instrument chosen from the General MIDI list or "From keyboard" (the channel and
 the program changes sent by the keyboard are used), and RECORD it.
 
 Recording (logic in recorder.Recorder, no Qt): Rec starts a take with the instrument
-chosen (optional metronome: one count-in bar + clicks, box "Click"); Stop ends it.
+chosen (one count-in bar, always heard, then the clicks; the CLICK BUTTON of the bar —
+owner, 2026-11-17 — shows the beat of the bar in colour and switches the clicks off / on,
+also during the take); Stop ends it.
 Every take is a part with its own instrument: record the trumpet, change the
 instrument, Rec again and the first take plays back while you add the second
 (overdub). The metronome and the parts already recorded are played by FluidSynth's
@@ -36,7 +38,7 @@ def _widget_class():
                                    QSpinBox, QCheckBox)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont
-    from .bar import action_bar
+    from .bar import action_bar, click_button
     from .. import midiin as mi
     from ..recorder import Recorder
 
@@ -54,6 +56,7 @@ def _widget_class():
             mono = QFont("Menlo")
             mono.setStyleHint(QFont.Monospace)
             self.status.setFont(mono)
+            self.click_btn = click_button(True, self._click_toggled)
             self.bar, self.bar_buttons = action_bar(
                 [("Rec", self.rec, "start / stop recording a take with the instrument chosen "
                                    "(the takes already recorded play back)"),
@@ -63,11 +66,24 @@ def _widget_class():
                  None,
                  ("All notes off", self.panic, "stop every sounding note (and the pedal)"),
                  ("Reconnect", self.reconnect, "open the MIDI input again (keyboard plugged "
-                                               "in now, or another port in Settings > Audio)")],
+                                               "in now, or another port in Settings > Audio)"),
+                 None,
+                 self.click_btn],
                 right=self.status)
             self.rec_btn = self.bar_buttons["Rec"]
             lay = QVBoxLayout(self)
             row = QHBoxLayout()
+            # INPUT and INSTRUMENT are two things (owner, 2026-11-17): where the notes come
+            # from (a MIDI keyboard, the computer keyboard) and the sound they get
+            self.input_box = QComboBox()
+            self.input_box.setToolTip("where the notes come from: a MIDI keyboard or the "
+                                      "computer keyboard (default: Settings > Audio > MIDI "
+                                      "input)")
+            self._fill_inputs()
+            self.input_box.currentIndexChanged.connect(lambda *_: self._input_changed())
+            row.addWidget(QLabel("Input:"))
+            row.addWidget(self.input_box)
+            row.addSpacing(16)
             self.instrument = QComboBox()
             self.instrument.addItem("From keyboard (channel and program sent by the keyboard)")
             self.instrument.addItems([f"{i + 1} – {n}" for i, n in enumerate(mi.GM_NAMES)])
@@ -77,13 +93,12 @@ def _widget_class():
             self.bpm.setValue(90)
             self.ts = QComboBox()
             self.ts.addItems(TIME_SIGNATURES)
-            self.click = QCheckBox("Click")
-            self.click.setChecked(True)
-            self.click.setToolTip("metronome while recording: one count-in bar, then the beats")
+            self.instrument.setToolTip("the sound of the notes (General MIDI), or the "
+                                       "keyboard's own channel and program changes")
             for wdg in (QLabel("Instrument:"), self.instrument):
                 row.addWidget(wdg)
             row.addSpacing(16)
-            for wdg in (QLabel("bpm:"), self.bpm, QLabel("Time:"), self.ts, self.click):
+            for wdg in (QLabel("bpm:"), self.bpm, QLabel("Time:"), self.ts):
                 row.addWidget(wdg)
             row.setStretch(1, 1)
             lay.addLayout(row)
@@ -103,12 +118,36 @@ def _widget_class():
             self.timer = QTimer(self)
             self.timer.setInterval(100)
             self.timer.timeout.connect(self._update)
+            self.beat_timer = QTimer(self)           # the beat on the Click button (recording)
+            self.beat_timer.setInterval(20)
+            self.beat_timer.timeout.connect(self._beat)
             self._shown = -1
             self.bpm.valueChanged.connect(lambda *_: self._empty_roll())
             self.ts.currentIndexChanged.connect(lambda *_: self._empty_roll())
             self._show_roll()
             app.tabs.currentChanged.connect(self._tab_changed)
             QTimer.singleShot(0, self._tab_changed)
+
+        # ------------------------------------------------------ input
+        def _fill_inputs(self):
+            """The MIDI inputs connected + Computer keyboard; the current choice kept, else
+            the one of the settings."""
+            from ..realtime import audio_config
+            cur = self.input_box.currentText() or audio_config().get("midi_input") or ""
+            names = mi.input_names()
+            self.input_box.blockSignals(True)
+            self.input_box.clear()
+            self.input_box.addItems(names)
+            i = self.input_box.findText(cur)
+            if i < 0:
+                real = [n for n in names if n != mi.COMPUTER_KEYBOARD]
+                i = self.input_box.findText(real[0] if real else mi.COMPUTER_KEYBOARD)
+            self.input_box.setCurrentIndex(max(0, i))
+            self.input_box.blockSignals(False)
+
+        def _input_changed(self):
+            if self.app.tabs.currentWidget() is self or self.kb is not None:
+                self.reconnect()
 
         # ------------------------------------------------------ instrument
         def program(self):
@@ -144,7 +183,7 @@ def _widget_class():
             self._connecting = True
             kb = None
             try:
-                name = mi.port_name()
+                name = mi.port_name(self.input_box.currentText() or None)
                 if name is None:
                     raise RuntimeError("no MIDI keyboard connected: plug it in, then Reconnect")
                 kb = mi.KeyboardSynth(program=self.program(), channel=LIVE_CHANNEL,
@@ -155,6 +194,10 @@ def _widget_class():
                 self.info.setStyleSheet("color: gray")
                 self.info.setText("Rec: record a take with the instrument chosen; Rec again "
                                   "with another instrument adds a part (the first plays back).")
+                if name == mi.COMPUTER_KEYBOARD:
+                    self.info.setText("Computer keyboard: a w s e d f t g y h u j k o l p ò = "
+                                      "C … E (an octave and a half), z / x octave, c / v "
+                                      "velocity. Rec: record a take with the instrument chosen.")
                 self.app.log(f"free player: '{name}' open, latency {self.kb.latency_ms} ms")
                 self.timer.start()
             except Exception as e:
@@ -182,6 +225,7 @@ def _widget_class():
 
         def reconnect(self):
             self.disconnect_port()
+            self._fill_inputs()                       # a keyboard plugged in meanwhile
             return self.connect_port()
 
         def panic(self):
@@ -226,6 +270,28 @@ def _widget_class():
                     self.status.setText(f"● REC  bar {int(q // r.bar_q) + 1:3d}  "
                                         f"beat {int((q % r.bar_q) // r.beat_q) + 1}   ")
 
+        def _beat(self):
+            """Beat of the bar (count-in included) on the Click button, from the recorder's
+            clock (the time HEARD); only a button repaint, nothing else is drawn."""
+            r = self.rec_
+            if r is None or not r.recording:
+                self.click_btn.show_beat(None)
+                return
+            q = r.now_q()
+            if q < 0:
+                n = int((q + r.bar_q) / r.beat_q + 1e-6) + 1
+            else:
+                n = int((q % r.bar_q) / r.beat_q + 1e-6) + 1
+            self.click_btn.show_beat(max(1, min(r.ts[0], n)))
+
+        def _click_toggled(self, on):
+            """Click button: the clicks of the take off / on at once (the count-in is always
+            heard)."""
+            if self.rec_ is not None and self.rec_.recording and self.kb is not None \
+                    and self.kb.player is not None:
+                self.kb.player.set_clicks_muted(not on)
+            self.app.log(f"free player: click {'on' if on else 'off'}")
+
         # ------------------------------------------------------ recording
         def rec(self):
             """Rec / Stop (the same button)."""
@@ -244,8 +310,9 @@ def _widget_class():
             if self.rec_ is None or not self.rec_.parts:
                 self.rec_ = Recorder(bpm=self.bpm.value(), ts=(num, den))
             r = self.rec_
-            events, lead = r.take_events(click=self.click.isChecked(), live_channel=LIVE_CHANNEL)
-            player.play_sequenced(events)            # clicks timed by FluidSynth, not Python
+            events, lead = r.take_events(live_channel=LIVE_CHANNEL)
+            # clicks timed by FluidSynth, not Python; silenced by the Click button
+            player.play_sequenced(events, mute_clicks=not self.click_btn.on)
             self.kb.set_program(self.program())          # play() reset the channels
             prog = self.program() if self.program() is not None else 0
             from ..realtime import audio_config
@@ -255,13 +322,14 @@ def _widget_class():
             for w in (self.bpm, self.ts):                  # tempo/metre of the first take
                 w.setEnabled(False)
             self.rec_btn.setText("Stop")
+            self.beat_timer.start()
             if self.rv is not None:
                 self.rv.win.setEnabled(False)            # no editing while recording
             # nothing drawn while recording: it would block Python and delay the notes
             # (the piano roll is redrawn at Stop); a bar/beat counter instead
             self.app.log(f"free player: recording take {len(r.parts) + 1} "
                          f"({self.instrument.currentText()}), {r.bpm:g} bpm, "
-                         f"{r.ts[0]}/{r.ts[1]}, click {'on' if self.click.isChecked() else 'off'}, "
+                         f"{r.ts[0]}/{r.ts[1]}, click {'on' if self.click_btn.on else 'off'}, "
                          f"clicks by {player.info.get('scheduler', '?')}, "
                          f"note times from {getattr(self.kb, 'timing', '?')}")
             self._say("● recording… (Stop when finished)", error=False)
@@ -270,6 +338,8 @@ def _widget_class():
         def _stop_take(self):
             r = self.rec_
             part = r.stop()
+            self.beat_timer.stop()
+            self.click_btn.show_beat(None)
             if self.kb is not None and self.kb.player is not None:
                 self.kb.player.stop()
                 self.kb.set_program(self.program())

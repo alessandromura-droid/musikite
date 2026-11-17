@@ -546,7 +546,7 @@ def report(deep=True):
     if deep and not ({"mido", "rtmidi"} & set(req_missing)) and _import_error("rtmidi") is None:
         try:
             from .midiin import input_names
-            ports = input_names()
+            ports = input_names(computer=False)
             info.append(f"MIDI inputs: {', '.join(ports) or 'none connected (needed only for the keyboard)'}")
         except Exception as e:
             warnings.append(f"MIDI ports cannot be listed: {type(e).__name__}: {e}")

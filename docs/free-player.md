@@ -8,6 +8,7 @@
 
 | Control | Meaning |
 |---|---|
+| **Input** | Where the notes come from: a MIDI keyboard connected or the **computer keyboard** (default: Settings > Audio > MIDI input). Changing it connects the new one. |
 | **Instrument** | A General MIDI instrument, or *From keyboard* (the keyboard's own channel and program changes; channel 10 = drums). |
 | **All notes off** | Stops every sounding note. |
 | **Reconnect** | Opens the keyboard again (after unplugging it). |
@@ -17,11 +18,35 @@ while the Free player tab is in front; the latency of the audio buffer is shown 
 
 Time spent **really playing** counts as study time in the [practice diary](diary.md).
 
+## Computer keyboard
+
+Without a MIDI keyboard (or with *Settings > Audio > MIDI input* = **Computer keyboard**)
+the letters of the computer play the notes, here and wherever the app accepts a MIDI
+keyboard (Read & play, Listen & repeat, scales, chord arpeggios, rhythm reading, Test MIDI):
+
+| Keys | Notes |
+|---|---|
+| `a w s e d f t g y h u j k o l p ò` (`;` on other layouts) | C C♯ D D♯ E F F♯ G G♯ A A♯ B C C♯ D D♯ E — an octave and a half, from C4 |
+| `z` / `x` | octave down / up (shown at the bottom of the window) |
+| `c` / `v` | softer / louder (velocity, 100 at the start) |
+
+- The keys play only while the keyboard is in use (this tab in front, a take of an exercise,
+  Test MIDI) and **not while a text or number field has the cursor** (bpm, names…): click on
+  an empty part of the window first.
+- A key held down plays one note (auto-repeat ignored); leaving the app releases every key.
+- Laptop keyboards cannot always send three or four keys at once: chords may lose a note.
+- The timing is a little less precise than a MIDI keyboard (the keys pass through the
+  window, not through the MIDI driver): fine for the exercises, slightly looser when
+  recording.
+
 ## Recording
 
 The Free player records **takes**, each one a **part** with its own instrument:
 
-1. Set **bpm**, **time signature**, **Click** (one count-in bar, then the beats).
+1. Set **bpm** and **time signature**. A take always starts with one count-in bar of
+   clicks; the **Click** button of the bar shows the beat of the bar in colour while you
+   record and switches the clicks after the count-in off / on, also during the take (see
+   [The Click button](getting-started.md#the-click-button)).
 2. **Rec**: play; **Stop** ends the take.
 3. The take appears in the **piano roll**, and **Quantize…** opens on it (Cancel keeps it
    as played).

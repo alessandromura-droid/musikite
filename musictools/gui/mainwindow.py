@@ -68,6 +68,57 @@ def _CloseFilter(fn):
     return _close_filter_class()(fn)
 
 
+def _key_filter(app):
+    """COMPUTER KEYBOARD (owner, 2026-11-17): the keys a w s e d f t g y h u j k o l p ò
+    (z x octave, c v velocity) go to midiin.ComputerKeyboard while a KeyboardSynth has it
+    open (Free player, an exercise take, Test MIDI) and no text / number field has the
+    focus; Cmd / Ctrl / Alt shortcuts stay as they are. Leaving the program releases the
+    keys held (no hanging note)."""
+    from PySide6.QtCore import QObject, QEvent, Qt
+    from PySide6.QtWidgets import (QApplication, QLineEdit, QAbstractSpinBox, QTextEdit,
+                                   QPlainTextEdit, QComboBox)
+
+    class KeyFilter(QObject):
+        def eventFilter(self, obj, ev):
+            t = ev.type()
+            if t == QEvent.ApplicationDeactivate:
+                try:
+                    from ..midiin import ComputerKeyboard
+                    ComputerKeyboard.release_all()
+                except Exception:
+                    pass
+                return False
+            if t not in (QEvent.KeyPress, QEvent.KeyRelease):
+                return False
+            try:
+                from ..midiin import ComputerKeyboard as CK
+                if not CK.active():
+                    return False
+                if ev.modifiers() & (Qt.ControlModifier | Qt.MetaModifier | Qt.AltModifier):
+                    return False
+                fw = QApplication.focusWidget()
+                if isinstance(fw, (QLineEdit, QAbstractSpinBox, QTextEdit, QPlainTextEdit)) or (
+                        isinstance(fw, QComboBox) and fw.isEditable()):
+                    return False                    # typing in a field: keys are letters
+                text = ev.text()
+                if not text:
+                    return False
+                if t == QEvent.KeyPress:
+                    done = CK.key_press(text, ev.isAutoRepeat())
+                    if done and text.lower() in ("z", "x", "c", "v") and not ev.isAutoRepeat():
+                        msg = (f"Computer keyboard: {CK.range_text()}" if text.lower() in "zx"
+                               else f"Computer keyboard: velocity {CK.velocity}")
+                        try:
+                            app.win.statusBar().showMessage(msg, 3000)
+                        except Exception:
+                            pass
+                    return done
+                return CK.key_release(text, ev.isAutoRepeat())
+            except Exception:
+                return False
+    return KeyFilter()
+
+
 # folder of the file dialogs by object type / file extension
 TYPE_FOLDER = {"Pdf": "pdf", "Score": "scores", "ExerciseSet": "exercises", "Phrase": "exercises",
                "Task": "exercises", "Routine": "exercises", "TaskGroup": "exercises", "PlayOver": "exercises", "Notes": "midi", "Midi": "midi"}
@@ -178,6 +229,9 @@ class App:
 
         w = self.win = QMainWindow()
         w.setWindowTitle(APP_NAME)
+        self._key_filter = _key_filter(self)          # the computer keyboard as a keyboard
+        from PySide6.QtWidgets import QApplication as _QApp
+        _QApp.instance().installEventFilter(self._key_filter)
         self._close_filter = _CloseFilter(self.save_user_workspace)
         w.installEventFilter(self._close_filter)
         w.resize(1100, 750)
@@ -219,6 +273,11 @@ class App:
         self.ex_list.setDragEnabled(True)
         self.ex_list.setDragDropMode(QAbstractItemView.DragOnly)
         self.ex_list.setDefaultDropAction(Qt.CopyAction)
+        # the Material list GIVES its selection too (owner, 2026-11-17): a MIDI / PDF / score
+        # dragged into an empty Play over MIDI tab
+        self.mat_list.setDragEnabled(True)
+        self.mat_list.setDragDropMode(QAbstractItemView.DragOnly)
+        self.mat_list.setDefaultDropAction(Qt.CopyAction)
         self._active_list = self.mat_list
         self._restore_split()
         self.split.splitterMoved.connect(lambda *_: self._save_split())
@@ -274,6 +333,9 @@ class App:
 
         self._build_menus()
         w.resizeDocks([self.dock_log], [110], Qt.Vertical)
+        # the Log is hidden at start (owner, 2026-11-17): View > Log shows it; everything is
+        # still written to ~/.musikite/log.txt
+        self.dock_log.hide()
         w.resizeDocks([self.dock_objects], [180], Qt.Horizontal)
         self._update_title()
         from ..progress import FOLDERS

@@ -141,8 +141,11 @@ def _widget_class(kind):
                                    QSpinBox, QComboBox, QCheckBox)
     from PySide6.QtCore import Qt, QTimer
     from PySide6.QtGui import QFont, QKeySequence, QShortcut
-    from .bar import action_bar
+    from .bar import action_bar, click_button
     from .play_reading import _StreamClock
+
+    REGEN_MS = 400                       # pause after a change before the exercise is made again
+    TAKE_ONLY = ("bpm", "click", "input", "metronome", "volume")   # do not change the exercise
 
     class DrillWidget(QWidget):
         KIND = kind
@@ -161,8 +164,12 @@ def _widget_class(kind):
             from ..progress import settings
             self.cfg = dr.settings_of(kind, settings().get("drills", {}).get(kind))
             self.status = QLabel("")
+            # CLICK BUTTON (owner, 2026-11-17; it replaces the "Click" box): the beat of the
+            # bar during a take; press = audio click off / on, also during the take
+            self.click_btn = click_button(bool(self.cfg.get("click", True)), self._click_toggled)
             self.bar, self.buttons = action_bar(
-                [("Start", self.start, "a NEW exercise with these settings, then the take"),
+                [("Start", self.start, "do the exercise shown (made with these settings)"),
+                 ("New", self.new, "another exercise with these settings (shown, not started)"),
                  ("Again", self.again, "the same exercise again (the best grade of today "
                                        "counts)"),
                  ("Stop", self.stop, "stop the take"),
@@ -170,7 +177,8 @@ def _widget_class(kind):
                                      "anyway after its first take); its takes go into it"),
                  None,
                  ("Zoom +", lambda: self.zoom(1.25), "larger staff"),
-                 ("Zoom -", lambda: self.zoom(0.8), "smaller staff")], right=self.status)
+                 ("Zoom -", lambda: self.zoom(0.8), "smaller staff"),
+                 self.click_btn], right=self.status)
             self.buttons["Again"].setEnabled(False)
             lay = QVBoxLayout(self)
             box = QGroupBox("Settings")
@@ -191,7 +199,8 @@ def _widget_class(kind):
                 lay.addWidget(self.chart)
             big = QFont()
             big.setPointSize(18)
-            self.feedback = QLabel(f"{dr.LABELS[kind]}: choose the settings and press Start")
+            self.feedback = QLabel(f"{dr.LABELS[kind]}: the exercise is shown below; "
+                                   "press Start")
             self.feedback.setFont(big)
             self.feedback.setAlignment(Qt.AlignCenter)
             self.detail = QLabel("")
@@ -215,6 +224,15 @@ def _widget_class(kind):
             self.tap_key = QShortcut(QKeySequence(Qt.Key_Space), self)
             self.tap_key.setContext(Qt.WidgetWithChildrenShortcut)
             self.tap_key.activated.connect(self.tap)
+            # PREVIEW (owner, 2026-11-17): the exercise made with the settings is shown at once
+            # and made again whenever a setting that changes it is changed (not in a tab bound
+            # to an exercise object, not during a take)
+            self._regen = QTimer(self)
+            self._regen.setSingleShot(True)
+            self._regen.setInterval(REGEN_MS)
+            self._regen.timeout.connect(self.preview)
+            self._connect_changes()
+            QTimer.singleShot(0, self.preview)
 
         # ------------------------------------------------------ settings
         def _add(self, label, w, second=False):
@@ -318,13 +336,25 @@ def _widget_class(kind):
                 _rand(rb.isChecked())
             w["bpm"] = self._add("bpm:", self._spin(30, 220, c["bpm"]),
                                  kind in ("scales", "rhythm", "chord_arpeggios"))
-            if kind != "rhythm":
-                cb = QCheckBox("Click")
-                cb.setChecked(bool(c.get("click", True)))
-                w["click"] = self._add("", cb, kind in ("scales", "chord_arpeggios"))
             if kind in ("scales", "chord_arpeggios"):
                 w["input"] = self._add("Input:", self._combo(("Microphone", "MIDI keyboard"),
                                                              c["input"]), True)
+
+        def _connect_changes(self):
+            """Every setting that changes the exercise makes it again (debounced); the
+            settings of the take only (tempo, click, input, metronome, volume) do not."""
+            for k, wd in self.w.items():
+                if k in TAKE_ONLY:
+                    continue
+                if hasattr(wd, "values") and wd.menu() is not None:
+                    for a in wd.menu().actions():
+                        a.toggled.connect(lambda *_: self._regen.start())
+                elif isinstance(wd, QCheckBox):
+                    wd.toggled.connect(lambda *_: self._regen.start())
+                elif isinstance(wd, QSpinBox):
+                    wd.valueChanged.connect(lambda *_: self._regen.start())
+                elif isinstance(wd, QComboBox):
+                    wd.currentIndexChanged.connect(lambda *_: self._regen.start())
 
         def settings(self):
             """Values of the tab (saved for the next time)."""
@@ -338,11 +368,15 @@ def _widget_class(kind):
                     s[k] = wd.value()
                 elif isinstance(wd, QComboBox):
                     s[k] = wd.currentData() if wd.currentData() is not None else wd.currentText()
+            s["click"] = self.click_btn.on              # the Click button of the bar
             return s
 
         def apply_settings(self, s):
             """Settings of an exercise object in the controls (bind_task)."""
             for k, v in (s or {}).items():
+                if k == "click" and v is not None:
+                    self.click_btn.set_on(bool(v))
+                    continue
                 wd = self.w.get(k)
                 if wd is None or v is None:
                     continue
@@ -374,21 +408,55 @@ def _widget_class(kind):
             self.feedback.setText(text)
             self.app.log(f"{dr.LABELS[kind]}: {text}")
 
-        def start(self):
-            """A new exercise, then its take (a tab bound to an exercise object: that
-            exercise again)."""
-            if self.bound_task is not None:
-                return self.again()
-            self.stop()
+        def preview(self):
+            """The exercise of the settings, made now and shown (not started, not in
+            Objects until its first take or Keep)."""
+            if self.bound_task is not None or self._state is not None:
+                return None
+            if getattr(self, "_looping", False):
+                return None
             s = self.settings()
             self._save(s)
             try:
                 self.drill = dr.make(kind, s)
             except ValueError as e:
+                self.drill = None
+                self._clear_staff()
                 self._say(str(e), error=True)
                 return None
             self.task = None                           # a new exercise = a new object
             self.buttons["Again"].setEnabled(True)
+            try:
+                self._show_staff(self.drill.phrase.to_score())
+                if kind == "chord_arpeggios":
+                    self._chord_list()
+                    if not self.drill.info.get("help"):
+                        self.sv.win.hide()             # nothing to read: only the names
+                    self._show_chord(waiting=True)
+                if self.chart is not None:
+                    self.chart.set_notes([])
+            except Exception as e:
+                self.app.log(f"{dr.LABELS[kind]}: preview: {type(e).__name__}: {e}")
+            self.detail.setText("")
+            self.feedback.setStyleSheet("")
+            self.feedback.setText(f"{self.drill.title}  —  press Start")
+            return self.drill
+
+        def new(self):
+            """New: another exercise with the same settings, shown (not started)."""
+            if self.bound_task is not None:
+                return None
+            self.stop()
+            return self.preview()
+
+        def start(self):
+            """Start = the exercise shown (owner, 2026-11-17); a tab bound to an exercise
+            object: that exercise again."""
+            if self.bound_task is not None:
+                return self.again()
+            self.stop()
+            if self.drill is None and self.preview() is None:
+                return None
             self._looping = kind == "chord_arpeggios"
             return self._prepare()
 
@@ -408,7 +476,10 @@ def _widget_class(kind):
                 return
             last = (self.feedback.text(), self.detail.text())
             if self.bound_task is None and self.settings().get("random"):
-                self.start()
+                self._looping = False                  # preview() is not blocked by the loop
+                self.preview()                         # a new random exercise, then its take
+                self._looping = True
+                self._prepare()
             else:
                 self.again()
             if self._looping:
@@ -419,9 +490,20 @@ def _widget_class(kind):
             in the controls; Start and Again = its take; the attempts go into it."""
             self.stop()
             self.bound_task = self.task = task
+            self._regen.stop()
+            self.buttons["New"].hide()                 # its own exercise, nothing to make
             self.drill = task.drill_obj()
             self.apply_settings(task.settings)
             self.buttons["Again"].setEnabled(True)
+            try:                                       # its staff at once (owner, 2026-11-17)
+                self._show_staff(self.drill.phrase.to_score())
+                if kind == "chord_arpeggios":
+                    self._chord_list()
+                    if not self.drill.info.get("help"):
+                        self.sv.win.hide()
+                    self._show_chord(waiting=True)
+            except Exception as e:
+                self.app.log(f"{dr.LABELS[kind]}: staff: {type(e).__name__}: {e}")
             self.feedback.setStyleSheet("")
             self.feedback.setText(f"{task.title}  —  press Start")
             return self
@@ -433,11 +515,11 @@ def _widget_class(kind):
         def _prepare(self):
             from ..midi import Midi
             s = self.settings()
-            mode = dr.METRONOMES.get(s.get("metronome"), "normal" if s.get("click", True) else "none")
+            mode = dr.METRONOMES.get(s.get("metronome"), "normal")
             gain = float(s.get("volume", 100)) / 100.0
             try:
                 self.pc = self.drill.check(bpm=s["bpm"], click_mode=mode, click_gain=gain,
-                                           user=self.app.user)
+                                           user=self.app.user, click=self.click_btn.on)
             except Exception as e:
                 self._say(f"{type(e).__name__}: {e}", error=True)
                 return None
@@ -457,19 +539,34 @@ def _widget_class(kind):
             self.timer.start(START_MS)
             return self.drill
 
-        def _show_staff(self):
-            from ..staffview import StaffView
+        def _clear_staff(self):
             if self.sv is not None:
                 self.sv.stop()
                 self.sv.win.setParent(None)
                 self.sv.win.deleteLater()
-            self.sv = StaffView(self.pc.score, title=self.drill.title)
+                self.sv = None
+
+        def _show_staff(self, score=None):
+            from ..staffview import StaffView
+            self._clear_staff()
+            self.sv = StaffView(score if score is not None else self.pc.score,
+                                title=self.drill.title)
+            self.sv.on_beat = self.click_btn.show_beat      # the beat on the Click button
             self.sv.win.setWindowFlags(Qt.Widget)
             self.sv.hide_toolbar()
             self.sv.win.statusBar().hide()
             self.staff_box.addWidget(self.sv.win)
             if abs(self._zoom - 1.0) > 1e-6:
                 self.sv.zoom(self._zoom)
+
+        def _click_toggled(self, on):
+            """Click button pressed: the audio click of the take going on (at once) and of
+            the next ones (saved with the settings of the tab)."""
+            if self.pc is not None:
+                self.pc.set_click(on)
+            if self.bound_task is None:
+                self._save(self.settings())
+            self.app.log(f"{dr.LABELS[kind]}: click {'on' if on else 'off'}")
 
         def zoom(self, f):
             self._zoom = max(0.2, min(5.0, self._zoom * f))
@@ -706,7 +803,8 @@ def _widget_class(kind):
 
 for _k, _help in (
         ("long_tones", "A long note (or a few) in your range: held time, stability and "
-                       "intonation in cents; Start = a new exercise, Again = the same."),
+                       "intonation in cents; the exercise is shown at once, Start = do it, New = "
+                       "another one, Again = the same."),
         ("scales", "Scales and arpeggios in the keys and types chosen, one or two octaves "
                    "up and down; only the order of the notes counts (very loose timing)."),
         ("lip_slurs", "Lip slurs on the harmonics of the valve positions chosen, level 1-6; "

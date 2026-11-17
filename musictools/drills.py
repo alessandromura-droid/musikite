@@ -85,7 +85,7 @@ DEFAULTS = {
     "lip_slurs": dict(positions=["0", "2", "1", "12"], level=1, note="half", highest=None,
                       bpm=72, click=True),
     "rhythm": dict(level=2, bars=2, time="4/4", bpm=80, metronome="High click (filtered)",
-                   volume=60, input="Clap (microphone)"),
+                   volume=60, input="Clap (microphone)", click=True),
     "chord_arpeggios": dict(progression="ii-V-I major", key="C", instrument="C (piano)",
                             clicks=4, times=1, help=True, random=False, bpm=80, click=True,
                             input="Microphone"),
@@ -133,8 +133,9 @@ class Drill:
         return cls(d["kind"], Phrase.from_dict(d["phrase"]), d["key"], d["title"], d.get("info"))
 
     # ---------------------------------------------------------- take
-    def check(self, bpm=None, click_mode="normal", click_gain=1.0, user=None):
-        """PlayCheck of one take (count-in bar + clicks + recording)."""
+    def check(self, bpm=None, click_mode="normal", click_gain=1.0, user=None, click=True):
+        """PlayCheck of one take (count-in bar + clicks + recording). click=False: the
+        clicks start silent (PlayCheck.set_click switches them during the take)."""
         from .playcheck import PlayCheck, chord_audio
         ph = self.phrase
         bpm = float(bpm or ph.bpm)
@@ -145,9 +146,9 @@ class Drill:
                                    for c, st, du in self.info["chords"]], bpm,
                                   lead_q=4.0)
         pc = PlayCheck(ph.to_score(), 0, None, bpm, ph.transposition,
-                       user=user, click_mode=click_mode, click_gain=click_gain,
+                       user=user, click=click, click_mode=click_mode, click_gain=click_gain,
                        play_trasp=TRUMPET[0] if ph.program == TRUMPET[1] else None,
-                       backing=backing)
+                       backing=backing, instrument=getattr(ph, "instrument", None))
         pc.midi_written = True              # a MIDI keyboard plays the note READ
         return pc
 
@@ -690,7 +691,14 @@ def _played_written(pc, source):
     y = np.asarray(pc.recording, dtype=float).ravel()[pc.offset:]
     delay, _ = pc.align(y)
     y3 = y[max(0, int(round(pc.fs * delay)) - 1):]
-    notes = audio_notes(y3, pc.fs, pc.trasp, range_trasp=pc.play_trasp)
+    prof = getattr(pc, "profile", None) or {}
+    if prof.get("family") == "decaying":       # piano…: by attacks; a chord = no note
+        from .detect import decaying_notes, click_info
+        times, ref = click_info(pc.click, pc.fs) if pc.click_mode != "none" else ([], None)
+        found = decaying_notes(y3, pc.fs, prof.get("range"), times, ref)
+        notes = [[s, d, p + pc.trasp] for s, d, p, chord, _ in found if not chord]
+    else:
+        notes = audio_notes(y3, pc.fs, pc.trasp, range_trasp=pc.play_trasp)
     return to_quarters(notes, pc.bpm, 0.0, pc.lead_q), delay
 
 

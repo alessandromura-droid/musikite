@@ -41,7 +41,10 @@ class _StreamClock:
         self.latency = 0.0
 
     def elapsed(self):
-        return self.pc.heard_time()
+        # negative during the prelude of Listen & repeat (the phrase heard): the count of
+        # the Click button starts with the count-in, not with the phrase
+        t = self.pc.track_time()
+        return 0.0 if t is None else t
 
     def stop(self):
         pass
@@ -71,7 +74,8 @@ def _widget_class():
             self._zoom = 1.0                 # zoom of the staff, kept for every exercise / report
             self._repeat_questions = None
             self._bound = None              # phrases of this tab (opened from an exercise)
-            self._quick = None              # quick exercise made by the last Start
+            self._quick = None              # quick exercise done (in Objects)
+            self._preview_ph = None         # quick exercise shown, not yet done
             lay = QVBoxLayout(self)
             big = QFont()
             big.setPointSize(15)
@@ -92,11 +96,12 @@ def _widget_class():
                                       "MIDI input)" + ("; with the keyboard play the WRITTEN note"
                                                        if self.mode == "reading" else ""))
             from PySide6.QtWidgets import QCheckBox
-            self.click_box = QCheckBox("Click")
-            self.click_box.setChecked(bool(cfg.get("click", True)))
-            self.click_box.setToolTip("metronome clicks during the exercise (count-in and "
-                                      "beats); untick to practise without them")
-            extra = (QLabel("Input:"), self.input_box, self.click_box)
+            from .bar import click_button
+            # CLICK BUTTON in the bar (owner, 2026-11-17; it replaces the "Click" box): the
+            # beat of the bar while a take runs, press = audio click off / on, also during
+            # the take; first state from Settings > Exercises > <type> > Click
+            self.click_btn = click_button(bool(cfg.get("click", True)), self._click_toggled)
+            extra = (QLabel("Input:"), self.input_box)
             self.pos_box = None
             if self.mode == "reading":               # SHOW POSITIONS (owner, 2026-11-09)
                 from ..progress import settings as _st
@@ -118,11 +123,15 @@ def _widget_class():
             lay.addWidget(hscroll(self.edit_box))
             self.edit_box.hide()                 # quick tab: random exercises, no variants
 
-            self.build_controls(extra=[("Again", lambda: self.again(),
+            self.build_controls(extra=[("New", lambda: self.new_quick(),
+                                        "another random exercise with these settings (shown, "
+                                        "not started)"),
+                                       ("Again", lambda: self.again(),
                                         "play this exercise again from the count-in"),
                                        None,
                                        ("Zoom +", lambda: self.zoom(1.25), "larger staff"),
-                                       ("Zoom -", lambda: self.zoom(0.8), "smaller staff")])
+                                       ("Zoom -", lambda: self.zoom(0.8), "smaller staff"),
+                                       self.click_btn])
             self.again_btn = self.bar_buttons["Again"]
             self.first_lbl = QLabel("")                   # "First note: G4" (in the bar)
             fb = QFont()
@@ -136,7 +145,7 @@ def _widget_class():
             self.staff_box = QVBoxLayout()
             lay.addLayout(self.staff_box, 1)
 
-            self.feedback = QLabel("Start = a new random exercise")
+            self.feedback = QLabel("")
             f2 = QFont()
             f2.setPointSize(20)
             self.feedback.setFont(f2)
@@ -154,17 +163,30 @@ def _widget_class():
             self._take_state = None                        # None, 'waiting', 'recording'
             self.set_answers(False)
             self.selection_changed()
+            # PREVIEW (owner, 2026-11-17): the random exercise of the settings is made and
+            # shown at once (Listen & repeat: hidden until the end of the take) and made
+            # again when bars / simplify / instrument change; Start does it, New makes another
+            self._regen = QTimer(self)
+            self._regen.setSingleShot(True)
+            self._regen.setInterval(400)
+            self._regen.timeout.connect(self.preview_quick)
+            self.q_bars.valueChanged.connect(lambda *_: self._regen.start())
+            self.q_level.currentIndexChanged.connect(lambda *_: self._regen.start())
+            self.q_instr.currentIndexChanged.connect(lambda *_: self._regen.start())
+            self.q_keysig.currentIndexChanged.connect(lambda *_: self._regen.start())
+            QTimer.singleShot(0, self.preview_quick)
 
         # ------------------------------------------------------ quick exercise
         def _quick_settings(self, cfg):
             """Quick exercise (no exercise bound): bars, simplify, instrument of the random
-            exercise made at every Start (saved per user). The part of the duet it is cut
+            exercise shown in the tab (saved per user). The part of the duet it is cut
             from is always random and not shown (owner, 2026-11-09)."""
             from PySide6.QtWidgets import QComboBox
-            from ..phrase import LEVEL_LABELS, EXERCISE_INSTRUMENTS, INSTRUMENTS, DUET_PARTS
+            from ..phrase import (LEVEL_LABELS, EXERCISE_INSTRUMENTS, INSTRUMENTS, DUET_PARTS,
+                                  KEY_SIG_LABELS, key_sig_value)
             from ..progress import settings
             q = dict(settings().get("quick_exercises", {}).get(self.kind, {}))
-            box = QGroupBox("New random exercise (every Start)")
+            box = QGroupBox("Random exercise (New = another one)")
             row = QHBoxLayout(box)
             self.q_part = QComboBox()
             self.q_part.addItems(list(DUET_PARTS))
@@ -180,24 +202,43 @@ def _widget_class():
             self.q_instr.addItems(list(EXERCISE_INSTRUMENTS if self.mode == "reading"
                                        else INSTRUMENTS))
             self.q_instr.setCurrentText(str(q.get("instrument", "Bb (trumpet)")))
-            for c in (self.q_part, self.q_level, self.q_instr):
+            # KEY SIGNATURE (owner, 2026-11-17): the written key is random, at most this many
+            # sharps / flats; auto = from Simplify (1-2 none, 3 one, 4 three, 5 five)
+            self.q_keysig = QComboBox()
+            for k, t in KEY_SIG_LABELS.items():
+                self.q_keysig.addItem(t, k)
+            self.q_keysig.setCurrentIndex(max(0, self.q_keysig.findData(
+                key_sig_value(q.get("key_sig", "auto")))))
+            self.q_keysig.setToolTip("key signature of the random exercise (written for the "
+                                     "instrument played): the key is drawn at random with at "
+                                     "most this many sharps / flats")
+            for c in (self.q_part, self.q_level, self.q_instr, self.q_keysig):
                 c.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
                 c.setMinimumContentsLength(10)
             self.q_part.setCurrentText("random")
             self.q_part.hide()
             self.q_instr.setToolTip("the instrument you play to study")
             for wdg in (QLabel("Bars:"), self.q_bars,
-                        QLabel("Simplify:"), self.q_level, QLabel("Instrument:"), self.q_instr):
+                        QLabel("Simplify:"), self.q_level, QLabel("Key:"), self.q_keysig,
+                        QLabel("Instrument:"), self.q_instr):
                 row.addWidget(wdg)
             row.addStretch()
             return box
 
         def quick_settings(self):
             return dict(part=self.q_part.currentText(), bars=self.q_bars.value(),
-                        level=self.q_level.currentData(), instrument=self.q_instr.currentText())
+                        level=self.q_level.currentData(), instrument=self.q_instr.currentText(),
+                        key_sig=self.q_keysig.currentData())
 
-        def _new_quick(self):
-            """A new random exercise (a piece of a new duet), added to Objects (Exercises)."""
+        def _running(self):
+            return (self.ex is not None and self.ex.state not in ("finished", "stopped")) \
+                or self._take_state is not None
+
+        def preview_quick(self):
+            """The random exercise of the quick settings, made and shown (Read & play) or
+            made and kept hidden (Listen & repeat); not in Objects until it is done."""
+            if self._bound or self._running():
+                return None
             from PySide6.QtWidgets import QApplication
             from PySide6.QtCore import Qt as _Qt
             from ..phrase import exercise_from_duet
@@ -209,7 +250,6 @@ def _widget_class():
                 save_setting("quick_exercises", allq)
             except Exception:
                 pass
-            self.feedback.setText("A new exercise…")
             QApplication.setOverrideCursor(_Qt.WaitCursor)
             try:
                 ph = exercise_from_duet(purpose=self.mode, **q)
@@ -218,6 +258,36 @@ def _widget_class():
                 return None
             finally:
                 QApplication.restoreOverrideCursor()
+            self._preview_ph = ph
+            self._quick = None                   # Start = this one, not the last one done
+            self._first_note(ph)
+            self.feedback.setStyleSheet("")
+            if self.mode == "repeat":
+                self._hide_staff()
+                self.feedback.setText(f"A new exercise ({ph.bars} bars) is ready — press "
+                                      "Start, listen, then repeat after the count-in")
+            else:
+                try:
+                    self._show_staff(ph.to_score(positions=self._positions()))
+                except Exception as e:
+                    self.app.log(f"{self.LOG}: preview: {type(e).__name__}: {e}")
+                self.feedback.setText(ph.title + "  —  press Start")
+            return ph
+
+        def new_quick(self):
+            """New: another random exercise with the same settings (shown, not started)."""
+            if self._bound or self._running():
+                return None
+            return self.preview_quick()
+
+        def _new_quick(self):
+            """The exercise shown (made now if there is none) goes into Objects (Exercises)
+            and is done; after its take Start does it again until New / a change."""
+            if self._preview_ph is None and self._quick:
+                return list(self._quick)
+            if self._preview_ph is None and self.preview_quick() is None:
+                return None
+            ph, self._preview_ph = self._preview_ph, None
             ph.practice_bpm = float(self.bpm.value())
             name = self.app.add_object(ph, ph.title)
             self.app.log(f"{self.LOG}: new exercise {name}")
@@ -393,7 +463,9 @@ def _widget_class():
             """This tab works on these exercises (double click on an exercise / group,
             routine); the staff is shown at once; no quick exercise here."""
             self._bound = list(phrases)
+            self._preview_ph = None
             self.quick_box.hide()
+            self.bar_buttons["New"].hide()       # its own exercises, nothing to make
             self.selection_changed()
             self._load_edit()
             return self
@@ -413,7 +485,6 @@ def _widget_class():
                     self.source.setText(f"   {len(ph)} exercises")
                 elif not ph:
                     self.source.setText("")
-                    self.feedback.setText("Start = a new random exercise")
                 running = self.ex is not None and self.ex.state not in ("finished", "stopped")
                 if self._bound and ph and not running:
                     self._first_note(ph[0])
@@ -465,19 +536,39 @@ def _widget_class():
                          f"input {source}")
             return PlayQuiz(phrases, user=self.app.user, bpm=self.bpm.value(),
                             progress=self.app.progress, mode=self.mode, source=source,
-                            click=self.click_box.isChecked(), positions=self._positions())
+                            click=self.click_btn.on, positions=self._positions())
 
         def _positions(self):
             return self.pos_box is not None and self.pos_box.isChecked()
 
         def _positions_toggled(self, on):
-            """Saved per user; the staff of a bound tab is shown again at once."""
+            """Saved per user and shown AT ONCE (owner, 2026-11-17): the staff of the
+            exercise shown is drawn again with / without the positions — the quick preview,
+            a bound tab, the exercise waiting for its take in a block; during a take (and
+            on a report) from the next exercise. The next questions of the block too."""
             try:
                 from ..progress import save_setting
                 save_setting("show_positions", bool(on))
             except Exception:
                 pass
-            self.selection_changed()
+            ex = getattr(self, "ex", None)
+            quiz = getattr(ex, "quiz", None) if ex is not None else None
+            if quiz is not None and hasattr(quiz, "positions"):
+                quiz.positions = bool(on)
+            if self._take_state is not None or getattr(self, "_report_shown", False):
+                return                                   # from the next exercise
+            running = ex is not None and ex.state not in ("finished", "stopped")
+            try:
+                from ..phrase import Phrase
+                if running and quiz is not None and getattr(quiz, "current", None):
+                    ph = Phrase.from_dict(quiz.current)
+                    self._show_staff(ph.to_score(positions=self._positions()))
+                elif not self._bound and self._preview_ph is not None:
+                    self._show_staff(self._preview_ph.to_score(positions=self._positions()))
+                else:
+                    self.selection_changed()
+            except Exception as e:
+                self.app.log(f"{self.LOG}: positions: {type(e).__name__}: {e}")
 
         def _midi_port_name(self):
             """MIDI input port of the settings (or the first one), None + message if none."""
@@ -569,16 +660,29 @@ def _widget_class():
         # ------------------------------------------------------ one take
         def _show_staff(self, score):
             from ..staffview import StaffView
+            self._report_shown = False
             if self.sv is not None:
                 self.sv.stop()
                 self.sv.win.setParent(None)
                 self.sv.win.deleteLater()
             self.sv = StaffView(score, title=score.title)
+            self.sv.on_beat = self.click_btn.show_beat   # the beat on the Click button
             self.sv.win.setWindowFlags(Qt.Widget)
             self.sv.hide_toolbar()                       # the exercise has its own bar (Start…)
             self.staff_box.addWidget(self.sv.win)
             if abs(self._zoom - 1.0) > 1e-6:
                 self.sv.zoom(self._zoom)                  # same zoom as the previous staff
+
+        def _click_toggled(self, on):
+            """Click button pressed: the audio click of this take (at once) and of the next
+            ones; the visual count goes on."""
+            ex = getattr(self, "ex", None)
+            quiz = getattr(ex, "quiz", None) if ex is not None else None
+            if quiz is not None and hasattr(quiz, "click"):
+                quiz.click = bool(on)
+                if getattr(quiz, "check", None) is not None:
+                    quiz.check.set_click(on)
+            self.app.log(f"{self.LOG}: click {'on' if on else 'off'}")
 
         def zoom(self, f):
             """Zoom + / Zoom - of the staff (exercise and report); kept for the next ones."""
@@ -597,6 +701,7 @@ def _widget_class():
             self._show_staff(score)
             self.sv.mark(colors)
             self.sv.win.show()
+            self._report_shown = True
 
         def _start_take(self, delay=0):
             self._stop_take()
@@ -756,7 +861,8 @@ def _repeat_class():
 registry.register(registry.Tool(
     name="play_reading", label="Read & play", category="Practice", kind="session",
     factory=lambda app: _widget_class()(app),
-    help="Quick exercise: every Start = a new random exercise, played on your instrument "
+    help="Quick exercise: a random exercise is shown at once (New = another one, a change "
+         "of the settings makes it again); Start = play it on your instrument "
          "(the microphone listens; use loudspeakers, not headphones) or on a MIDI keyboard "
          "(play the written note); every note is checked after one count-in bar. Show "
          "positions: valves / slide positions under the notes."))
@@ -764,6 +870,7 @@ registry.register(registry.Tool(
 registry.register(registry.Tool(
     name="listen_repeat", label="Listen & repeat", category="Practice", kind="session",
     factory=lambda app: _repeat_class()(app),
-    help="Quick exercise: every Start = a new random exercise is played: repeat it (your "
+    help="Quick exercise: a random exercise is ready at once (New = another one); Start "
+         "plays it: repeat it (your "
          "instrument or a MIDI keyboard). The staff is shown at the end with your notes and "
          "the right ones."))

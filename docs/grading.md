@@ -18,6 +18,21 @@ Then, for every note:
 3. the window may move up to a quarter of a beat (at most half the note) earlier or later,
    to allow for timing.
 
+The steps above are for **wind instruments** (trumpet, trombone…), whose sound stays while
+you blow. The **piano** (and later guitar, harp, mallets) is heard differently, because
+its sound starts strong and dies away; frame by frame its pitch wobbles and jumps to the
+octave as it decays, which made one note look like two:
+
+1. every note is found by its **attack** — the moment the sound suddenly grows, compared
+   with the rest of the same take, so the distance of the microphone and the kind of
+   piano (acoustic, electric, digital) do not matter;
+2. its pitch is read **just after the attack** (the hammer noise skipped), from all its
+   harmonics together; the decay is never split into a second note, and striking the same
+   key again is a new note;
+3. the notes found are paired one to one with the written ones, as with a MIDI keyboard;
+4. **a chord is wrong**: if other notes (not harmonics of the note, nor the click) sound
+   at its attack, the note is never right — the exercises are always one note at a time.
+
 **MIDI keyboard.** Expected and played notes are paired one to one: same pitch, starts at
 most half a beat apart, closest pairs first; every played note is used once.
 

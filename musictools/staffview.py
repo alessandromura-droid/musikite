@@ -318,6 +318,8 @@ class StaffView:
         self._clicks = _ClickFilter(self)               # click on the staff: cursor + bar
         self.view.viewport().installEventFilter(self._clicks)
         self.on_position = None                          # f(beat, bar) after every move
+        self.on_beat = None              # f(n, of) when the beat of the bar changes (Click button)
+        self.click_audible = True        # metronome events heard (set_click: also while playing)
         self.win.resize(1200, 360 if self.layout_mode == "line" else 800)
         self.player = None
 
@@ -571,8 +573,12 @@ class StaffView:
         body = max(0.0, self.end_q - start) * spq
         ev = []
         first = int(round(start / beat_q)) - lead_beats     # bar-beat index of the first click
-        n_clicks = lead_beats + (int(np.ceil(body / spb - 1e-9)) if click else 0)
-        ev += click_events(n_clicks, spb, beats_bar, first_beat=first)
+        # the count-in is always heard (owner, 2026-11-17); the clicks after it can be
+        # silenced live (Click button: CLICK_PROG events)
+        ev += click_events(lead_beats, spb, beats_bar, first_beat=first, prog=0)
+        if click:
+            ev += click_events(int(np.ceil(body / spb - 1e-9)), spb, beats_bar,
+                               first_beat=first + lead_beats, offset=lead)
         if music:
             m = self.midi if self.midi is not None else self.score.to_midi()
             src_bpm = m.tempo() or bpm
@@ -594,7 +600,8 @@ class StaffView:
         """As timeline() but following the TEMPO MAP of `tempo_pm` (tempo changes of the MIDI)
         at `speed` (1 = the MIDI's tempo): count-in at the starting tempo, a click on every
         beat of the map, the music (self.midi) from `start`."""
-        from .realtime import midi_events, click_events, CLICK_ACCENT, CLICK_BEAT, CLICK_DUR, DRUM_CH
+        from .realtime import (midi_events, click_events, CLICK_ACCENT, CLICK_BEAT, CLICK_DUR,
+                               DRUM_CH, CLICK_PROG)
         sp = max(0.05, float(self.speed))
         ts = self.score.time_signature().split("/")
         beats_bar, beat_q = int(ts[0]), 4.0 / float(ts[1])
@@ -604,13 +611,15 @@ class StaffView:
         lead = lead_beats * spb0
         body = max(0.0, self._sec(self.end_q) - s0) / sp
         first = int(round(start / beat_q))
-        ev = click_events(lead_beats, spb0, beats_bar, first_beat=first - lead_beats)
+        # count-in always heard (owner, 2026-11-17: Click off = no clicks AFTER the count-in)
+        ev = click_events(lead_beats, spb0, beats_bar, first_beat=first - lead_beats, prog=0)
         if click:
             b = 0
             while start + b * beat_q < self.end_q - 1e-6:
                 t = lead + (self._sec(start + b * beat_q) - s0) / sp
                 key = CLICK_ACCENT if (first + b) % beats_bar == 0 else CLICK_BEAT
-                ev += [(t, True, DRUM_CH, key, 110, 0), (t + CLICK_DUR, False, DRUM_CH, key, 0, 0)]
+                ev += [(t, True, DRUM_CH, key, 110, CLICK_PROG),
+                       (t + CLICK_DUR, False, DRUM_CH, key, 0, CLICK_PROG)]
                 b += 1
         if music and self.midi is not None:
             ev += midi_events(self.midi.pm, start=s0, scale=1.0 / sp, offset=lead)
@@ -639,9 +648,69 @@ class StaffView:
             if sf2 is None:
                 raise RuntimeError("no soundfont: give sf2= or use Midi.add_sf2(path) first")
             self.player = get_player(sf2)
-            self.player.play(ev)
+            self.player.play(ev, mute_clicks=not self.click_audible)
         self.timer.start()
         return self
+
+    def set_click(self, on):
+        """Metronome clicks heard or silent, also while playing (the Click button)."""
+        self.click_audible = bool(on)
+        if self.player is not None and hasattr(self.player, "set_clicks_muted"):
+            self.player.set_clicks_muted(not self.click_audible)
+        return self
+
+    # ---------------------------------------------------------- beat of the bar (Click button)
+    def _meter(self):
+        """[(offset q, beats in the bar, quarters per beat)] of every bar of the score (its
+        time signatures: 6/8 = 6 beats of an eighth, as the clicks)."""
+        m = getattr(self, "_meter_cache", None)
+        if m is None:
+            m = []
+            try:
+                last = None
+                for meas in self.score.m21.parts[0].getElementsByClass("Measure"):
+                    ts = meas.timeSignature or meas.getContextByClass("TimeSignature")
+                    if ts is not None:
+                        last = (int(ts.numerator), 4.0 / float(ts.denominator))
+                    if last is None:
+                        t = self.score.time_signature().split("/")
+                        last = (int(t[0]), 4.0 / float(t[1]))
+                    m.append((float(meas.offset), last[0], last[1]))
+            except Exception:
+                m = []
+            self._meter_cache = m
+        return m
+
+    def beat_of_bar(self, beat):
+        """(n, beats of the bar) at a position in quarters; n = 1 on the downbeat."""
+        m = self._meter()
+        if not m:
+            t = self.score.time_signature().split("/")
+            nb, bq = int(t[0]), 4.0 / float(t[1])
+            per = nb * bq
+            return int((beat % per) / bq + 1e-6) + 1, nb
+        cur = m[0]
+        for row in m:
+            if row[0] <= beat + 1e-6:
+                cur = row
+            else:
+                break
+        off, nb, bq = cur
+        if beat >= off + nb * bq:                       # after the last bar: go on counting
+            beat = off + (beat - off) % (nb * bq)
+        return max(1, min(nb, int((beat - off) / bq + 1e-6) + 1)), nb
+
+    def _emit_beat(self, n, of=None):
+        key = (n, of)
+        if key == getattr(self, "_last_beat", None):
+            return
+        self._last_beat = key
+        f = getattr(self, "on_beat", None)
+        if callable(f):
+            try:
+                f(n, of)
+            except Exception:
+                pass
 
     @property
     def play_t0(self):
@@ -654,6 +723,7 @@ class StaffView:
     def stop(self):
         if getattr(self, "timer", None) is not None:
             self.timer.stop()
+        self._emit_beat(None)
         if getattr(self, "player", None) is not None:
             self.player.stop()
         return self
@@ -670,6 +740,11 @@ class StaffView:
         if t < self.lead:
             self.set_position(self._start)
             self.status.setText(f"count-in {max(0, int(t / spb)) + 1:2d}            ")
+            if t < 0:                                  # before the count-in (Listen & repeat:
+                self._emit_beat(None)                  # the phrase to repeat)
+            else:
+                nb = self.beat_of_bar(self._start)[1]  # the count-in bar: beats of the first
+                self._emit_beat(min(nb, int(t / (self.lead / nb) + 1e-6) + 1), nb)
             return
         if self.tempo_pm is not None:
             beat = self._q(self._sec(self._start) + (t - self.lead) * self.speed)
@@ -683,3 +758,4 @@ class StaffView:
                 self.on_end()
             return
         self.set_position(beat)
+        self._emit_beat(*self.beat_of_bar(beat))

@@ -14,8 +14,9 @@ BAR_STYLE = ("QPushButton {background: #4a4a4a; color: white; border: 1px solid 
 
 def action_bar(items, right=None):
     """QWidget with buttons as those of the Objects panel (same size), darker grey.
-    items: list of (text, callback, tooltip) or None (spacing); right: widget put at
-    the right end (e.g. a clock). Returns (bar, {text: button})."""
+    items: list of (text, callback, tooltip), None (spacing) or a ready widget (e.g. the
+    Click button, `click_button`); right: widget put at the right end (e.g. a clock).
+    Returns (bar, {text: button})."""
     from PySide6.QtWidgets import QWidget, QHBoxLayout, QPushButton
     bar = QWidget()
     bar.setStyleSheet(BAR_STYLE)
@@ -26,6 +27,9 @@ def action_bar(items, right=None):
     for it in items:
         if it is None:
             lay.addSpacing(24)
+            continue
+        if not isinstance(it, (tuple, list)):          # a widget made by the caller
+            lay.addWidget(it)
             continue
         text, fn, tip = (tuple(it) + ("",))[:3]
         b = QPushButton(text)
@@ -39,6 +43,91 @@ def action_bar(items, right=None):
         lay.addWidget(right)
     bar.buttons = buttons
     return bar, buttons
+
+
+# CLICK BUTTON (owner, 2026-11-17): a visual metronome and the switch of the audio click in
+# one button of the exercise bars, after Zoom + / Zoom -. While a take runs it shows
+# "Click N" (N = the beat of the bar, also in the count-in) and its background changes
+# colour at every click: the first beat of the bar RED, the others yellow, green, blue,
+# then yellow again (any metre: 3/4 red-yellow-green, 6/8 counted in eighths as its
+# clicks). Pressing it switches the audio click off / on, also during a take (the
+# visual count goes on); off = the text struck through. It replaces the "Click" boxes.
+BEAT_COLOURS = ("#c62828", "#f9a825", "#2e7d32", "#1565c0")   # beat 1, then 2, 3, 4, 2, 3…
+_BEAT_TEXT = {"#f9a825": "black"}
+
+
+def beat_colour(n):
+    """Background of beat n (1 = the first of the bar)."""
+    if n <= 1:
+        return BEAT_COLOURS[0]
+    return BEAT_COLOURS[1 + (n - 2) % (len(BEAT_COLOURS) - 1)]
+
+
+def click_button(on=True, toggled=None):
+    """The Click button (see BEAT_COLOURS): `on` = audio click heard; toggled(on) is
+    called when it is pressed. Methods: set_on(on) (no call of toggled), show_beat(n)
+    (n None = idle), `on`."""
+    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtCore import Qt
+
+    class ClickButton(QPushButton):
+        def __init__(self):
+            super().__init__("Click")
+            self.on = bool(on)
+            self._beat = None
+            self.toggled_fn = toggled
+            self.setFocusPolicy(Qt.NoFocus)          # the space bar stays for the exercise
+            fm = self.fontMetrics()
+            # as large as the other bar buttons (same padding 14 + border 1), fixed so that
+            # "Click 12" does not move the bar
+            self.setFixedWidth(fm.horizontalAdvance("Click 12") + 2 * 14 + 2 + 4)
+            self.clicked.connect(self._pressed)
+            self._paint()
+
+        def _pressed(self):
+            self.on = not self.on
+            self._paint()
+            if callable(self.toggled_fn):
+                self.toggled_fn(self.on)
+
+        def set_on(self, value):
+            self.on = bool(value)
+            self._paint()
+            return self
+
+        def show_beat(self, n, of=None):
+            n = None if n is None else int(n)
+            if n == self._beat:
+                return self
+            self._beat = n
+            self._paint()
+            return self
+
+        def _paint(self):
+            n = self._beat
+            if n is None:
+                bg, fg, hover = "#4a4a4a", "white", "#5a5a5a"
+                self.setText("Click")
+            else:
+                bg = beat_colour(n)
+                fg = _BEAT_TEXT.get(bg, "white")
+                hover = bg
+                self.setText(f"Click {n}")
+            if not self.on:
+                fg = "#9a9a9a" if n is None else fg
+            f = self.font()
+            f.setStrikeOut(not self.on)
+            self.setFont(f)
+            self.setStyleSheet(
+                f"QPushButton {{background: {bg}; color: {fg}; border: 1px solid #333; "
+                f"border-radius: 4px; padding: 4px 14px;}}"
+                f"QPushButton:hover {{background: {hover};}}"
+                f"QPushButton:pressed {{background: #333;}}")
+            self.setToolTip("audio click ON: press to switch it off (the count goes on)"
+                            if self.on else
+                            "audio click OFF: press to switch it on")
+
+    return ClickButton()
 
 
 def hscroll(w):

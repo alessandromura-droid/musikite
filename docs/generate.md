@@ -69,7 +69,20 @@ into it.
 ### Read & play – generate random / Listen & repeat – generate random
 
 Pieces of **new random music** made by the app (no file needed): bars, simplify,
-instrument, part. Listen & repeat: 2 bars, trumpet or piano.
+key signature, instrument, part. Listen & repeat: 2 bars, trumpet or piano.
+
+**Key signature**: every exercise is in a **random key** (major or minor), written for the
+instrument you play, with at most this many sharps / flats. *auto* follows Simplify:
+
+| Simplify | Key signature |
+|---|---|
+| 1, 2 | none (C major / A minor) |
+| 3 | up to 1 |
+| 4 | up to 3 |
+| 5 | up to 5 |
+
+So the piano reads in C at the easy levels (before, every random piano exercise was in B♭:
+the music was written in C for the B♭ trumpet), and so does the trumpet.
 
 ### Drills
 

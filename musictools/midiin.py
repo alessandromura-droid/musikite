@@ -24,6 +24,16 @@ no longer exists: Segmentation fault in the CoreMIDI thread ("no Python frame") 
 next key. So: `_RtPort.close()` = cancel_callback + close_port + delete(); the callbacks
 reach the KeyboardSynth through a weak reference (no reference cycle), and a
 KeyboardSynth that is dropped closes its port at once (`__del__`).
+
+COMPUTER KEYBOARD (owner, 2026-11-17): "Computer keyboard" is one more input (listed by
+input_names, chosen in Settings > Audio > MIDI input, used when no MIDI keyboard is
+connected). Its keys make the same messages as a MIDI keyboard, so every user of
+KeyboardSynth (Free player, exercises, Test MIDI) works with it unchanged:
+    a w s e d f t g y h u j k o l p ò (or ;)  =  C C# D D# E F F# G G# A A# B C C# D D# E
+(an octave and a half, as the keyboard to be drawn on Android), z / x = octave down / up,
+c / v = velocity down / up (fixed otherwise, 100). The GUI passes the key events
+(`ComputerKeyboard.key_press / key_release`, main window filter) only while a
+KeyboardSynth has it open and no text field has the focus; auto-repeat is ignored.
 """
 import time
 import weakref
@@ -58,13 +68,18 @@ GM_NAMES = (
 from .theory import note_name       # noqa: E402  (names live in the theory engine)
 
 
-def input_names():
-    """Names of the connected MIDI input ports ([] if mido / python-rtmidi are missing)."""
+COMPUTER_KEYBOARD = "Computer keyboard"
+
+
+def input_names(computer=True):
+    """Names of the connected MIDI input ports ([] if mido / python-rtmidi are missing),
+    then "Computer keyboard" (computer=False: only the real ports)."""
     try:
         import mido
-        return list(mido.get_input_names())
+        names = list(mido.get_input_names())
     except Exception:
-        return []
+        names = []
+    return names + ([COMPUTER_KEYBOARD] if computer else [])
 
 
 def port_name(want=None):
@@ -82,8 +97,8 @@ def port_name(want=None):
     if want is None:
         from .realtime import audio_config
         want = audio_config().get("midi_input")
-    if not names:
-        return None
+    if want == COMPUTER_KEYBOARD or not names:     # chosen, or no MIDI keyboard connected
+        return COMPUTER_KEYBOARD
     return want if want in names else names[0]
 
 
@@ -124,6 +139,106 @@ class _RtPort:
 
     def __del__(self):
         self.close()
+
+
+class ComputerKeyboard:
+    """The computer keyboard as a MIDI keyboard (see the module doc). One state for the
+    whole program (octave, velocity, keys held); the open KeyboardSynth objects that use
+    it (`_ComputerPort`) receive its messages."""
+    KEYS = {"a": 0, "w": 1, "s": 2, "e": 3, "d": 4, "f": 5, "t": 6, "g": 7, "y": 8, "h": 9,
+            "u": 10, "j": 11, "k": 12, "o": 13, "l": 14, "p": 15, "ò": 16, ";": 16}
+    base = 60                     # note of "a" (C4)
+    velocity = 100
+    _held = {}                    # key -> note sounding
+    _ports = []                   # open _ComputerPort
+
+    @classmethod
+    def active(cls):
+        cls._ports = [p for p in cls._ports if p.synth() is not None]
+        return bool(cls._ports)
+
+    @classmethod
+    def _send(cls, msg):
+        t = time.perf_counter()
+        for p in list(cls._ports):
+            s = p.synth()
+            if s is not None:
+                try:
+                    s.message(msg, t)
+                except Exception:
+                    pass
+
+    @classmethod
+    def _say(cls, text):
+        for p in list(cls._ports):
+            s = p.synth()
+            if s is not None:
+                s.last = text
+                s.count += 1
+
+    @classmethod
+    def range_text(cls):
+        return f"{note_name(cls.base)}–{note_name(min(127, cls.base + 16))}"
+
+    @classmethod
+    def key_press(cls, text, auto_repeat=False):
+        """A key went down (its text). True = it is one of ours (consumed)."""
+        import mido
+        k = (text or "").lower()
+        if k in cls.KEYS:
+            if auto_repeat or k in cls._held:
+                return True
+            note = cls.base + cls.KEYS[k]
+            if 0 <= note <= 127:
+                cls._held[k] = note
+                cls._send(mido.Message("note_on", note=note, velocity=cls.velocity))
+            return True
+        if k in ("z", "x"):
+            if not auto_repeat:
+                cls.release_all()
+                cls.base = max(24, min(96, cls.base + (12 if k == "x" else -12)))
+                cls._say(f"computer keyboard: {cls.range_text()}")
+            return True
+        if k in ("c", "v"):
+            if not auto_repeat:
+                cls.velocity = max(20, min(127, cls.velocity + (10 if k == "v" else -10)))
+                cls._say(f"computer keyboard: velocity {cls.velocity}")
+            return True
+        return False
+
+    @classmethod
+    def key_release(cls, text, auto_repeat=False):
+        import mido
+        k = (text or "").lower()
+        if k in cls.KEYS:
+            if not auto_repeat:
+                note = cls._held.pop(k, None)
+                if note is not None:
+                    cls._send(mido.Message("note_off", note=note, velocity=0))
+            return True
+        return k in ("z", "x", "c", "v")
+
+    @classmethod
+    def release_all(cls):
+        """Every key held up (octave change, the window left: no note left hanging)."""
+        import mido
+        held, cls._held = cls._held, {}
+        for note in held.values():
+            cls._send(mido.Message("note_off", note=note, velocity=0))
+
+
+class _ComputerPort:
+    """The 'port' of a KeyboardSynth opened on the computer keyboard."""
+
+    def __init__(self, synth):
+        self.synth = weakref.ref(synth)
+        ComputerKeyboard._ports.append(self)
+
+    def close(self):
+        if self in ComputerKeyboard._ports:
+            ComputerKeyboard._ports.remove(self)
+        if not ComputerKeyboard._ports:
+            ComputerKeyboard._held = {}
 
 
 def _weak(method):
@@ -200,6 +315,12 @@ class KeyboardSynth:
         if self.sound:
             self._player()
             self.set_program(self.program)
+        if name == COMPUTER_KEYBOARD:        # the keys of the computer (see the module doc)
+            self.port = _ComputerPort(self)
+            self.timing = "keys"
+            self.name = name
+            self.last = f"computer keyboard: {ComputerKeyboard.range_text()}"
+            return self
         self._dev = None                     # device clock (sum of the rtmidi deltas)
         self._off = None                     # perf_counter - device clock (smallest seen)
         self.port = self._open_rtmidi(name)  # exact times from the MIDI driver
