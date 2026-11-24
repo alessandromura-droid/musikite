@@ -60,14 +60,14 @@ def info():
     except Exception as e:
         say("rtmidi:", type(e).__name__, e)
     say("soundfont", soundfont())
-    from musictools.realtime import audio_config
+    from musikite.realtime import audio_config
     say("audio", audio_config())
 
 
 def soundfont():
     """The soundfont of the last user of the app (read only)."""
     import os
-    from musictools import progress
+    from musikite import progress
     progress._current["user"] = progress.last_user()      # no write: only for reading
     sf2 = progress.settings().get("sf2")
     if not sf2 or not os.path.isfile(sf2):
@@ -80,8 +80,8 @@ def port():
     names = rtmidi.MidiIn().get_ports()
     if not names:
         sys.exit("no MIDI keyboard connected")
-    from musictools.midiin import port_name
-    from musictools import progress
+    from musikite.midiin import port_name
+    from musikite import progress
     progress._current["user"] = progress.last_user()
     return port_name()
 
@@ -95,14 +95,14 @@ def run(case, seconds):
     stats = dict(n=0, last="")
     player = None
     if case in "BCDEF":
-        from musictools.realtime import get_player
+        from musikite.realtime import get_player
         player = get_player(soundfont())
         player.stop()
         say("synth", {k: player.info.get(k) for k in ("driver", "period_size", "latency_ms")})
         player.fs.program_select(15, player.sfid, 0, 0)
     rec = None
     if case == "D":
-        from musictools.recorder import Recorder
+        from musikite.recorder import Recorder
         rec = Recorder(bpm=90, ts=(4, 4))
 
     def handle(msg, t):
@@ -121,12 +121,12 @@ def run(case, seconds):
 
     # metronome
     if case in "CDE":
-        from musictools.realtime import click_events
+        from musikite.realtime import click_events
         ev = click_events(4 + int(seconds * 1.5) + 4, 60 / 90, 4)
         player.play_sequenced(ev)
         say("clicks by", player.info.get("scheduler"))
     elif case == "F":
-        from musictools.realtime import click_events
+        from musikite.realtime import click_events
         player.play(click_events(4 + int(seconds * 1.5) + 4, 60 / 90, 4))
         say("clicks by the Python thread")
     if rec is not None:
@@ -181,8 +181,8 @@ def run(case, seconds):
 
 def _setup_app_settings():
     """The app's soundfont and settings of the last user (read only)."""
-    from musictools import progress
-    from musictools.midi import Midi
+    from musikite import progress
+    from musikite.midi import Midi
     sf2 = soundfont()
     progress._current["user"] = progress.last_user()
     Midi._default_sf2 = sf2
@@ -192,9 +192,9 @@ def _setup_app_settings():
 def _app_classes(seconds, listener_owner=None):
     """KeyboardSynth + Recorder exactly as the Free player uses them (channel 15,
     clicks + take events by play_sequenced, t_zero as in freeplayer.rec)."""
-    from musictools import midiin as mi
-    from musictools.recorder import Recorder
-    from musictools.realtime import audio_config
+    from musikite import midiin as mi
+    from musikite.recorder import Recorder
+    from musikite.realtime import audio_config
     sf2 = _setup_app_settings()
     rec = Recorder(bpm=90, ts=(4, 4))
 
@@ -290,7 +290,7 @@ def run_i(seconds):
     from PySide6.QtCore import QTimer
     _setup_app_settings()
     app = QApplication.instance() or QApplication([])
-    fp = importlib.import_module("musictools.gui.freeplayer")
+    fp = importlib.import_module("musikite.gui.freeplayer")
 
     class FakeApp:
         """What the Free player needs from the main window."""

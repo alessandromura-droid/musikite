@@ -1,0 +1,43 @@
+#!/bin/bash
+# musikite: the command line of MusiKitE from the source code of this project
+# (owner, 2026-11-24). `musikite ARGS…` = `python3 -m musikite ARGS…` from any folder:
+# file names are taken relative to the folder you are in.
+#
+# Once per Mac, add this folder to the PATH in ~/.zshrc (then open a new Terminal):
+#     export PATH="<project folder>/bin:$PATH"
+# With bin/ in the PATH, `man musikite` also finds the manual in <project>/man.
+
+# the project = the folder above this script (symbolic links followed)
+SRC="${BASH_SOURCE[0]}"
+while [ -L "$SRC" ]; do
+    DIR="$(cd -P "$(dirname "$SRC")" && pwd)"
+    SRC="$(readlink "$SRC")"
+    case "$SRC" in /*) ;; *) SRC="$DIR/$SRC" ;; esac
+done
+PROJECT="$(cd -P "$(dirname "$SRC")/.." && pwd)"
+if [ ! -d "$PROJECT/musikite" ]; then
+    echo "musikite: package folder $PROJECT/musikite not found" >&2
+    exit 1
+fi
+
+# Python 3.10 or newer: the python3 of this shell (conda), else the usual conda installs
+good() {
+    [ -n "$1" ] && [ -x "$1" ] && \
+        "$1" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null
+}
+PY="$(command -v python3)"
+if ! good "$PY"; then
+    PY=""
+    for c in "$HOME/miniconda3" "$HOME/miniforge3" "$HOME/anaconda3" \
+             /opt/homebrew/Caskroom/miniconda/base /usr/local/Caskroom/miniconda/base \
+             /opt/homebrew/Caskroom/miniforge/base /usr/local/Caskroom/miniforge/base \
+             /opt/miniconda3 /opt/anaconda3; do
+        if good "$c/bin/python3"; then PY="$c/bin/python3"; break; fi
+    done
+fi
+if [ -z "$PY" ]; then
+    echo "musikite: no Python 3.10 or newer found (the macOS system Python 3.9 is too old)" >&2
+    exit 1
+fi
+
+PYTHONPATH="$PROJECT${PYTHONPATH:+:$PYTHONPATH}" exec "$PY" -m musikite "$@"

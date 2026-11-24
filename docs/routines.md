@@ -13,6 +13,9 @@ of a routine goes to the [practice diary](diary.md) as usual.
   routine** (or right-click). A group counts as its exercises.
 - Or open an existing routine and **Add…** / drag exercises into it.
 
+**One routine per instrument**: a routine for the trumpet, another for the piano. The
+title proposed is "Routine *instrument*" (the instrument chosen beside the user).
+
 The routine holds **copies**: the exercises in Objects are not changed, and the results of
 the routine's items are their own.
 
@@ -50,7 +53,10 @@ list to reorder them. Holding a drag over the routine's tab brings it to the fro
 
 ## Doing a routine
 
-Each exercise opens in **its own tab** and starts at once. In the bar of that tab two extra
+Each exercise opens in **its own tab** and starts at once. The tab is named after the
+**routine** and the position, not after the exercise (e.g. "↻ Routine trumpet – 3/7"; a
+group of exercises: "▦ <group> – 3/5"), so you always see that you are inside a routine.
+In the bar of that tab two extra
 buttons appear:
 
 | Button | Meaning |

@@ -21,7 +21,7 @@ MusiKitE (source).app/
 # macOS crash reports
 *.ips
 
-# soundfont download folder: the soundfont and its licence are in musictools/data
+# soundfont download folder: the soundfont and its licence are in musikite/data
 GeneralUser-GS/
 
 # personal notes, data and leftovers: not part of the repository (owner, 2026-11-17)

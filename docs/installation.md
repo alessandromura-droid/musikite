@@ -46,7 +46,24 @@ The app never stores your data inside itself, so updating it loses nothing:
 
 ## 2. From the source code
 
-MusiKitE needs Python ≥ 3.10 (3.12 recommended), the C libraries **FluidSynth** and
+The quick way (macOS):
+
+```
+git clone https://github.com/alessandromura-droid/musikite.git
+cd musikite && ./install.sh
+```
+
+`install.sh` asks before every step (`./install.sh --yes` answers yes to all,
+`./install.sh --help` lists the steps): it finds conda in its **base** environment (and
+offers to install Miniforge if there is none), installs FluidSynth and PortAudio ≥ 19.7
+from conda-forge, the Python packages at the versions of `requirements-macbook.txt` and
+MusiKitE itself with `pip install -e .` (the command `musikite`; a `git pull` updates the
+program), links the manual page (`man musikite`), runs the dependency check and, if a new
+Terminal would not find `musikite`, offers to add the PATH line to `~/.zshrc`. At the end
+it prints commands to try. Nothing is deleted; undo: `pip uninstall musikite` and the
+line marked "MusiKitE" in `~/.zshrc`.
+
+By hand: MusiKitE needs Python ≥ 3.10 (3.12 recommended), the C libraries **FluidSynth** and
 **PortAudio ≥ 19.7**, and the Python packages of `requirements.txt`. The reference set-up is
 a conda environment:
 
@@ -63,7 +80,7 @@ a conda environment:
 3. Check everything:
 
    ```
-   python3 -m musictools check
+   python3 -m musikite check
    ```
 
    It tells you what is missing and the commands to install it (see
@@ -71,10 +88,13 @@ a conda environment:
 4. Start the window:
 
    ```
-   python3 -m musictools gui
+   python3 -m musikite gui
    ```
 
-   or, in Jupyter (`demo.ipynb`): `import musictools; app = musictools.gui()`.
+   or, in Jupyter (`demo.ipynb`): `import musikite; app = musikite.gui()`.
+
+From any folder, the command `musikite` does the same as `python3 -m musikite` once the
+project's `bin` folder is in the PATH (see [Command line](command-line.md)).
 
 All the packages are required: the program does not start if one is missing or does not
 load. Only `ipywidgets` and `jupyterlab` (for the demo notebook) are optional.
@@ -82,10 +102,10 @@ load. Only `ipywidgets` and `jupyterlab` (for the demo notebook) are optional.
 ### PortAudio 19.6 crashes the microphone
 
 With PortAudio 19.6 (old conda builds) the first recording closes the program
-("libc++abi: terminating"). `python3 -m musictools check` reports it; the fix is
+("libc++abi: terminating"). `python3 -m musikite check` reports it; the fix is
 `conda install -c conda-forge "portaudio>=19.7"`.
 
 ## Updating
 
 - App: download the new `.dmg`, drag MusiKitE onto Applications again (replace).
-- Source: update the folder (git pull or a new copy); `python3 -m musictools check`.
+- Source: update the folder (git pull or a new copy); `python3 -m musikite check`.

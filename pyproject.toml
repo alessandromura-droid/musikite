@@ -1,0 +1,48 @@
+# MusiKitE: Python packaging (owner, 2026-11-24). `./install.sh` uses it
+# (`pip install -e .`): the command `musikite` is made by pip in the conda base.
+# Exact versions of the reference Mac: requirements-macbook.txt (installed first).
+
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "musikite"
+version = "0.1.0"
+description = "Music practice for wind instruments and piano: reading, drills, ear training, duets, backing tracks"
+readme = "README.md"
+license = { text = "GPL-3.0-or-later" }
+requires-python = ">=3.10"
+authors = [{ name = "Alessandro Mura" }]
+dependencies = [
+    "numpy",
+    "pandas",
+    "pretty_midi",
+    "music21",
+    "pymupdf",
+    "verovio",
+    "svglib",
+    "reportlab",
+    "PySide6",
+    "pyfluidsynth",
+    "sounddevice",
+    "scipy",
+    "mido",
+    "python-rtmidi",
+]
+
+[project.optional-dependencies]
+notebook = ["ipywidgets", "jupyterlab"]
+
+[project.scripts]
+musikite = "musikite.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/alessandromura-droid/musikite"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["musikite", "musikite.*", "musictools"]
+
+[tool.setuptools.package-data]
+musikite = ["data/*", "data/library/*", "data/library/mid/*"]

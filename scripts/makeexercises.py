@@ -15,7 +15,7 @@ the result identical to the start (none, 0, 100 %) and results identical to anot
 skipped. RANGE (owner): every transposition is moved by WHOLE OCTAVES (the whole exercise,
 never note by note) into LOWEST … HIGHEST, written for the Bb trumpet (G3 … C6); an
 exercise wider than that range is skipped. TRUMPET = ONE VOICE: never polyphony (a chord
-keeps its highest note; voices on separate tracks give separate exercises). Every exercise is rated (musictools.difficulty) and
+keeps its highest note; voices on separate tracks give separate exercises). Every exercise is rated (musikite.difficulty) and
 saved AS AN EXERCISE (.json, not MIDI; it remembers its MIDI, so it can be changed in the
 app; the key of every exercise is estimated again after the transformation and the
 transposition — the key it is READ in — and is in its name and file name, e.g.
@@ -63,7 +63,7 @@ def key_title(ph):
     """Name of an exercise (owner, 2026-11-08): only 'exercise in <key>', the WRITTEN key
     (as read on the staff), e.g. 'exercise in G major', 'exercise in E minor',
     'exercise in D dorian' — nothing of the MIDI it comes from."""
-    from musictools.theory import key_signature
+    from musikite.theory import key_signature
     pc = (ph.tonic + ph.transposition) % 12
     flats = key_signature(pc, ph.mode) < 0               # spelled as its key signature
     tonic = (FLAT_NAMES if flats else SHARP_NAMES)[pc]
@@ -93,7 +93,7 @@ def next_number(out):
 
 
 def transformations(mode):
-    from musictools.phrase import TRANSFORMS, MODES
+    from musikite.phrase import TRANSFORMS, MODES
     tags = [t for t in TRANSFORMS if t not in ("transpose", "mode")]
     return tags + [f"mode {m}" for m in MODES if m != mode]
 
@@ -110,11 +110,11 @@ def main():
                          "--no-include_midi = do not include MIDI (no trace of it)")
     a = ap.parse_args()
 
-    from musictools.midi import Midi
-    from musictools.score import Score
-    from musictools.phrase import exercises_from_midi, save_exercises, INSTRUMENTS
-    from musictools.difficulty import difficulty
-    from musictools.theory import parse_note, key_of_notes
+    from musikite.midi import Midi
+    from musikite.score import Score
+    from musikite.phrase import exercises_from_midi, save_exercises, INSTRUMENTS
+    from musikite.difficulty import difficulty
+    from musikite.theory import parse_note, key_of_notes
 
     T = INSTRUMENTS[INSTRUMENT][0]                       # written = concert + T
     lo, hi = parse_note(a.lowest), parse_note(a.highest)

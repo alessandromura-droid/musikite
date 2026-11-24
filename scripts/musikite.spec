@@ -15,16 +15,16 @@ ARCH = os.environ.get("MUSIKITE_ARCH") or None
 VERSION = os.environ.get("MUSIKITE_VERSION", "0")
 
 datas = [
-    (os.path.join(PROJECT, "musictools", "data"), os.path.join("musictools", "data")),
+    (os.path.join(PROJECT, "musikite", "data"), os.path.join("musikite", "data")),
     # check.py looks for these files in the package folder (warnings otherwise)
-    (os.path.join(PROJECT, "musictools", "scoreread.py"), "musictools"),
+    (os.path.join(PROJECT, "musikite", "scoreread.py"), "musikite"),
     (os.path.join(PROJECT, "requirements-macbook.txt"), "."),
     # the manual (Help > Manual, gui/manual.py) and the licence it links to
     (os.path.join(PROJECT, "docs"), "docs"),
     (os.path.join(PROJECT, "LICENSE"), "."),
 ]
 binaries = []
-hiddenimports = collect_submodules("musictools") + [
+hiddenimports = collect_submodules("musikite") + [
     "fluidsynth", "sounddevice", "_sounddevice_data", "mido.backends.rtmidi", "rtmidi",
     "PySide6.QtSvg", "PySide6.QtSvgWidgets", "PySide6.QtPrintSupport",
 ]
@@ -53,7 +53,7 @@ if not os.path.exists(lib):
 shutil.copy2(os.path.realpath(lib), os.path.join(STAGE, "libfluidsynth.dylib"))
 binaries.append((os.path.join(STAGE, "libfluidsynth.dylib"), "lib"))
 
-# the soundfont GeneralUser GS and its licence are in musictools/data (copied above with the
+# the soundfont GeneralUser GS and its licence are in musikite/data (copied above with the
 # whole folder): the app's default when the user has chosen none (gui/mainwindow.py)
 
 a = Analysis(                                         # noqa: F821

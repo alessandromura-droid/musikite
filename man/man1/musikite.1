@@ -1,0 +1,247 @@
+.TH MUSIKITE 1 "2026-11-24" "MusiKitE" "User Commands"
+.SH NAME
+musikite \- music practice for wind instruments and piano (Python package musikite)
+.SH SYNOPSIS
+.B musikite
+.I command
+.RI [ options ]
+.br
+.B musikite
+.RI [ command ]
+.B \-\-help
+.br
+.B python3 \-m musikite
+.I command
+.RI [ options ]
+.SH DESCRIPTION
+.B MusiKitE
+is an exerciser for wind instruments, bands and piano: reading and playing (graded from the
+microphone or a MIDI keyboard), drills, ear training, an exercise library, routines and a
+practice diary. Its Python package is
+.BR musikite ;
+.B musikite
+is made by
+.I ./install.sh
+(pip, in the conda base); without installing, the script
+.I bin/musikite
+of the project does the same. Both run
+.B python3 \-m musikite
+from any folder. The old name
+.B python3 \-m musictools
+still works.
+.PP
+Without a window it makes duets, canons and second voices, reads vector PDFs into MIDI,
+merges MIDI files and writes trumpet fingerings into PDFs. With a window it opens the app
+.RB ( gui )
+or a staff viewer
+.RB ( view ).
+.PP
+MIDI files are always at concert pitch; scores and PDFs are engraved at written pitch.
+Chords and keys of duets and canons are given at written trumpet pitch unless
+.B \-\-concert
+is used.
+.SH COMMANDS
+.TP
+.B gui
+The main window of MusiKitE.
+.TP
+.BI view " file.mid|file.pdf"
+Staff viewer with a moving cursor.
+.B \-\-page
+wrapped systems instead of one line;
+.BI \-\-bpm " BPM"
+tempo for Play;
+.BI \-\-instrument " NAME"
+for a PDF whose instrument is not written in it.
+Click a bar: Play starts there after one count-in bar; double-click: it starts at once.
+.TP
+.BI play " file.mid"
+Play a MIDI file in real time (FluidSynth). Give the soundfont with
+.BR \-\-sf2 .
+.TP
+.B duet
+Random duet for two Bb trumpets.
+.RS
+.TP
+.BI \-c " CHORDS" "\fR, \fP\-\-chords"
+progression, one chord per bar; \(lqF:G\(rq = two chords in a bar
+(default \(lqC F G G C F G C\(rq).
+.TP
+.BI \-g " N" "\fR, \fP\-\-rounds"
+times the progression is repeated (2).
+.TP
+.BI \-l " 1|2|3" "\fR, \fP\-\-level"
+complexity (1).
+.TP
+.BI \-k " KEY" "\fR, \fP\-\-key"
+e.g. C or Am (default: the first chord).
+.TP
+.B \-\-concert
+chords and key at concert pitch.
+.TP
+.BI \-s " SEED" "\fR, \fP\-\-seed"
+random seed: the same seed gives the same duet.
+.TP
+.BI \-t " BPM" "\fR, \fP\-\-bpm"
+tempo (120).
+.TP
+.BI \-f " N" "\fR, \fP\-\-phrase"
+bars per phrase, the last one is the cadence (4).
+.TP
+.BI \-x " LIST" "\fR, \fP\-\-textures"
+comma-separated textures: thirds, sixths, melody_acc, pedal, dialogue, echo, canon_bar
+(level 1), canon_half, mirror, counterpoint (level 2).
+.TP
+.BI \-r " X" "\fR, \fP\-\-repetition"
+0..1, how much the motif is restated (0.7).
+.RE
+.TP
+.B canon
+Canon for two Bb trumpets: trumpet 2 plays what trumpet 1 played one progression earlier.
+.RS
+.TP
+.BI \-c " CHORDS"
+progression (\(lqC F G C\(rq).
+.TP
+.BI \-d " 1-5"
+difficulty: 1 = one long note per chord ... 5 = eighths (2).
+.TP
+.BI \-b " N"
+beats per chord (4).
+.TP
+.BI \-n " N"
+cycles of the progression (4).
+.TP
+.BR \-k " KEY, " \-\-concert ", " \-s " SEED, " \-t " BPM"
+as in
+.B duet
+(tempo 80).
+.RE
+.TP
+.BI second_voice " melody.mid"
+Duet from a melody: the melody of the MIDI (the track with the most notes, or
+.BI \-\-track " N"\fR,\fP
+0 = the first) plus a second voice for
+.BI \-\-instrument " KEY"
+(a catalogue key, e.g. \(lqC (trombone)\(rq; default: the current instrument).
+.RS
+.TP
+.BI \-m " MODE"
+.B harmony
+(same rhythm, a third or a sixth away),
+.B canon
+(the melody delayed) or
+.B accompaniment
+(notes of the chords; default).
+.TP
+.BR \-\-side " below|above, " \-\-interval " thirds|sixths"
+harmony.
+.TP
+.BR \-\-delay " auto|\(lqhalf bar\(rq|\(lq1 bar\(rq|\(lq2 bars\(rq|\(lq4 bars\(rq, " \-\-canon_interval ", " \-\-strict ", " \-\-allow_dissonant
+canon (refused under 70 % consonance unless
+.BR \-\-allow_dissonant ).
+.TP
+.BR \-\-pattern " auto|\(lqlong notes\(rq|\(lqhalf notes\(rq|beats|arpeggio"
+accompaniment (arpeggio).
+.RE
+.TP
+.BI pdf " score.pdf"
+MIDI from a vector PDF (MuseScore, Sibelius, Finale, Dorico, MusiKitE).
+.BI \-\-instrument " NAME"
+if it is not written in the PDF;
+.B \-\-force
+writes the MIDI even if some bars do not add up.
+.TP
+.BI merge " a.mid b.mid ..."
+All the tracks of the files in one MIDI (\-o for the output). Files with different tempo
+maps are refused unless
+.BR \-\-allow_tempo_mismatch .
+.TP
+.BI fingering " part.pdf"
+A copy of a trumpet part with the Bb trumpet fingerings under the notes, default
+.IR part.noted.pdf .
+.BI \-o " out.pdf"\fR,\fP
+.BI \-\-fontsize " PT"
+(12),
+.BI \-\-font " FILE"
+(TTF/OTF for the digits),
+.BI \-\-space " PT"
+(12),
+.B \-\-color " r|g|b|k"
+(k),
+.B \-\-no_repetition
+(repeated pairs written once, then \(lq\-\(rq),
+.BI \-\-instrument " trumpet"\fR.\fP
+.TP
+.B check
+Dependency check: what is installed, what is missing and the commands to install it.
+Exit status 1 if something required is missing.
+.SH COMMON OPTIONS
+For
+.BR duet ", " canon ", " second_voice ", " pdf ", " merge ", " play :
+.TP
+.BI \-o " out.mid" "\fR, \fP\-\-out"
+write the result to a MIDI file.
+.TP
+.BI \-\-pdf " out.pdf"
+engrave the result to a PDF.
+.TP
+.BI \-\-sf2 " font.sf2"
+soundfont used to play.
+.TP
+.B \-\-play
+play the result.
+.SH FILES
+.TP
+.I install.sh
+installation from the source code (asks before every step;
+.B \-\-yes
+answers yes to all,
+.B \-\-help
+lists the steps).
+.TP
+.I bin/musikite
+the command without installing; add to
+.I ~/.zshrc
+the line
+.B export PATH="<project folder>/bin:$PATH"
+(with it,
+.B man musikite
+finds this page in
+.IR <project>/man ).
+.TP
+.I ~/.musikite/
+users, settings, results, diary (or the data folder chosen in Settings > Folders);
+.IR log.txt ,
+.IR scoreread.log .
+.TP
+.I ~/musikite/
+default folders of workspaces, exercises, MIDI, PDF, scores, audio, results, soundfonts.
+.TP
+.I musikite/data/
+soundfont GeneralUser GS, fonts, icon, exercise library.
+.TP
+.I docs/
+the full manual (also Help > Manual in the app).
+.SH REQUIREMENTS
+Python 3.10 or later with the packages of
+.IR requirements.txt ;
+FluidSynth and PortAudio 19.7 or later. Run
+.B musikite check
+on a new computer.
+.SH EXAMPLES
+.nf
+musikite duet \-c "C F G C" \-l 2 \-s 7 \-o duet.mid \-\-pdf duet.pdf
+musikite canon \-d 3 \-k Bb \-o canon.mid
+musikite second_voice melody.mid \-m harmony \-o duet.mid
+musikite pdf part.pdf \-o part.mid
+musikite merge a.mid b.mid \-o all.mid
+musikite fingering part.pdf
+musikite view part.pdf \-\-page
+.fi
+.SH SEE ALSO
+.IR docs/command-line.md ,
+.I docs/README.md
+(the manual).
+.SH LICENSE
+GPL-3.0.

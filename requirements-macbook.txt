@@ -7,7 +7,7 @@
 # C libraries (not pip): FluidSynth and PortAudio >= 19.7 from conda-forge, in the same
 # conda environment:   conda install -c conda-forge fluidsynth "portaudio>=19.7"
 # (PortAudio 19.6 makes the microphone crash: "libc++abi: terminating / Abort trap: 6").
-# `python -m musictools check` compares every Mac with this file.
+# `python -m musikite check` compares every Mac with this file.
 numpy==2.4.6
 pandas==3.0.1
 pretty_midi==0.2.11.post0

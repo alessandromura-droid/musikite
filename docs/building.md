@@ -29,7 +29,7 @@ An older dmg with the same name is **replaced**.
    update it only when `requirements-macbook.txt` changes.
 3. **Builds the app** with PyInstaller (`scripts/musikite.spec`) in a temporary folder:
    Python, PySide6 and every library, FluidSynth, the soundfont *GeneralUser GS* with its licence
-   (`musictools/data`), the fonts, this manual (`docs/`), the icon, and the microphone
+   (`musikite/data`), the fonts, this manual (`docs/`), the icon, and the microphone
    permission. A few minutes.
 4. **Makes the dmg** (the app and a link to Applications) with `hdiutil`, then deletes the
    temporary folder.
@@ -46,7 +46,7 @@ bash scripts/make_launcher.sh
 
 makes **MusiKitE (source).app** in the project folder: a small app (a few KB, no
 libraries inside) that starts MusiKitE **from the source code**
-(`python3 -m musictools gui`) with the MusiKitE icon. Drag it to the Dock. Every change of
+(`python3 -m musikite gui`) with the MusiKitE icon. Drag it to the Dock. Every change of
 the code is used at the next start: nothing to rebuild. With the project in Dropbox the app
 reaches every Mac.
 
@@ -63,7 +63,7 @@ reaches every Mac.
 
 ## Requirements
 
-- macOS with conda installed (`python3 -m musictools check` explains how).
+- macOS with conda installed (`python3 -m musikite check` explains how).
 - On Apple silicon, a **native** Terminal: if Terminal is set to *Open using Rosetta* the
   script stops and says so.
 - Internet the first time (conda and pip packages).

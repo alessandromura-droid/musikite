@@ -1,6 +1,6 @@
 #!/bin/bash
 # make_launcher.sh — makes "MusiKitE (source).app", a small app for the Dock that starts
-# MusiKitE FROM THE SOURCE CODE of this project (python3 -m musictools gui), with the
+# MusiKitE FROM THE SOURCE CODE of this project (python3 -m musikite gui), with the
 # MusiKitE icon. No libraries inside (a few KB): every change of the code is used at the
 # next start, nothing to rebuild.
 #
@@ -10,7 +10,7 @@
 # every Mac). Then drag it to the Dock. Running the script again replaces it.
 #
 # At every start the launcher:
-#   - finds the project: the folder that contains the app (if it holds musictools/),
+#   - finds the project: the folder that contains the app (if it holds musikite/),
 #     else the project folder where the launcher was made;
 #   - finds Python as Terminal does (a login + interactive zsh, so `conda init` in
 #     ~/.zshrc is applied), else the base Python of the usual conda installs; Python
@@ -30,8 +30,8 @@ APP="$DEST/$NAME.app"
 
 say() { echo "== $*"; }
 
-if [ ! -d "$PROJECT/musictools" ]; then
-    echo "ERROR: $PROJECT/musictools not found: run the script from the project" >&2
+if [ ! -d "$PROJECT/musikite" ]; then
+    echo "ERROR: $PROJECT/musikite not found: run the script from the project" >&2
     exit 1
 fi
 if [ ! -d "$DEST" ]; then
@@ -43,8 +43,8 @@ say "making $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
-# icon (.icns from musictools/data/icon.png, as build_mac_app.sh)
-ICON_PNG="$PROJECT/musictools/data/icon.png"
+# icon (.icns from musikite/data/icon.png, as build_mac_app.sh)
+ICON_PNG="$PROJECT/musikite/data/icon.png"
 ICON_KEY=""
 if [ -f "$ICON_PNG" ]; then
     WORK="$(mktemp -d)"
@@ -88,7 +88,7 @@ EOF
 # the launcher itself; the project folder of today is written in it as a fallback
 cat > "$APP/Contents/MacOS/MusiKitE" <<'EOF'
 #!/bin/bash
-# MusiKitE (source): starts `python3 -m musictools gui` from the project folder.
+# MusiKitE (source): starts `python3 -m musikite gui` from the project folder.
 # Made by scripts/make_launcher.sh; log in ~/.musikite/launcher.log.
 
 MADE_IN="@PROJECT@"
@@ -107,9 +107,9 @@ See ~/.musikite/launcher.log\"" >/dev/null 2>&1
 
 # the project: the folder that contains the app, else the one where it was made
 HERE="$(cd "$(dirname "$0")/../../.." && pwd)"
-if [ -d "$HERE/musictools" ]; then
+if [ -d "$HERE/musikite" ]; then
     PROJECT="$HERE"
-elif [ -d "$MADE_IN/musictools" ]; then
+elif [ -d "$MADE_IN/musikite" ]; then
     PROJECT="$MADE_IN"
 else
     fail "project folder not found (looked in $HERE and $MADE_IN). Make the launcher again with scripts/make_launcher.sh."
@@ -134,11 +134,11 @@ if [ -z "$PY" ]; then
         if good "$c/bin/python3"; then PY="$c/bin/python3"; break; fi
     done
 fi
-[ -n "$PY" ] || fail "no Python 3.10 or newer found (the conda Python of Terminal). Check with: python3 -m musictools check"
+[ -n "$PY" ] || fail "no Python 3.10 or newer found (the conda Python of Terminal). Check with: python3 -m musikite check"
 echo "python: $PY ($("$PY" -c 'import sys; print(sys.version.split()[0])'))"
 
 cd "$PROJECT" || fail "cannot enter $PROJECT"
-exec "$PY" -m musictools gui
+exec "$PY" -m musikite gui
 EOF
 
 # the project folder of today inside the launcher (fallback when the app is moved)

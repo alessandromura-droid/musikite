@@ -14,7 +14,7 @@ FOLDER holds one subfolder per instrument (Clarinetto, Tromba, Tuba …) with th
      "Misirlou"), else the name without the instrument and the part numbers ("Astarbene
      Clarinet in Bb 2 + 3" -> "Astarbene");
   3. every song with two parts or more is merged into  FOLDER/<song> - all parts.mid
-     (musictools.midi.merge, strict: parts with different tempos -> the song is NOT merged
+     (musikite.midi.merge, strict: parts with different tempos -> the song is NOT merged
      and the difference is printed).
 Nothing else is changed or deleted (old merged files stay where they are).
 """
@@ -52,8 +52,8 @@ def main(argv=None):
     ap.add_argument("folder")
     ap.add_argument("--dry-run", action="store_true", help="only show what would be done")
     a = ap.parse_args(argv)
-    from musictools.pdf import scoreread
-    from musictools.midi import merge
+    from musikite.pdf import scoreread
+    from musikite.midi import merge
     sr = scoreread()
     words = [w for spec in sr.INSTRUMENTS.values() for w in spec[0]]
     words += ["Clarinetto", "Clarinet", "Sax", "Saxophone", "Drum", "Drums", "Rullante",

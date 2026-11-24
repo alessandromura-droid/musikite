@@ -2,8 +2,14 @@
 
 [← Manual](README.md)
 
+Every drill is made for the **instrument chosen beside the user**
+([The instrument](getting-started.md#the-instrument)): written for it, its range, its sound.
+**Lip slurs** exist only for trumpet, cornet and flugelhorn, **long tones** only for wind
+instruments. The **piano** is meant for a **MIDI keyboard**: from the microphone its notes
+are recognised only roughly.
+
 Drills are exercises **made by the app**: *Practice > Long tones*, *Scales & arpeggios*,
-*Lip slurs*, *Rhythm reading*, *Chord arpeggios*.
+*Lip slurs*, *Rhythm reading*, *Chord arpeggios*, *Improvise on chords*.
 
 Common to all of them:
 
@@ -12,7 +18,8 @@ Common to all of them:
   whenever you change a setting** that changes it (not tempo, the Click button, input,
   metronome, volume). **New** makes another one with the same settings.
 - **Start** does the exercise shown and records a take: one count-in bar, the clicks, the
-  cursor, then the notes coloured green / red and the grade.
+  cursor, then the notes coloured green / red and the grade. While the take runs **Start**
+  is **Stop**.
 - **Again** repeats the **same** exercise (the best attempt of the day counts).
 - **Click** (last button of the bar): the beat of the bar in colour during the take, and
   the audio click on / off, also during the take; remembered with the settings. See
@@ -52,7 +59,6 @@ reported as "out of tune, +100 c" instead of "not heard". Grading: see
 | **Octaves** | 1 or 2. |
 | **Pattern** | `straight`, `thirds`, `groups of 3`, `groups of 4`, `turns`, `arpeggio & scale` (7-note scales only), or `varied` (one at random each time). |
 | **Rhythm** | `half`, `quarter`, `eighth`, or `varied`: rhythmic cells, triplets, 3/4, 6/8, quarters up and eighths down, 4/4 → 3/4, alternating 4/4 + 3/4. The click follows the time-signature changes. |
-| **Instrument** | B♭ trumpet or C piano. |
 | **Lowest / Highest** | A scale that does not fit is not used (never folded). |
 | **Input** | Microphone or MIDI keyboard (the note **read**). |
 | **bpm** | |
@@ -103,11 +109,10 @@ appears big in the tab, and you have some clicks to arpeggiate it.
 |---|---|
 | **Progression** | From the catalogue: I-vi-IV-V, ii-V-I, ii-V-i minor, I-vi-ii-V, blues, minor blues, jazz blues, rhythm changes, Autumn Leaves cycle, So What, Coltrane changes… |
 | **Key (written)** | The key you read in. |
-| **Instrument** | C (piano) or B♭ (trumpet): chord names are written for it. |
 | **Clicks a chord** | 4, 8 or 12. |
 | **Times** | The progression 1–4 times. |
 | **Show the notes** | Easy version: the chord tones and the right **tensions** of each chord are shown under its name, and the staff with the chords is visible. |
-| **Random** | Progression, key and clicks drawn at random at every new exercise. The instrument is never random. |
+| **Random** | Progression, key and clicks drawn at random at every new exercise (the long changes of the standards are left out: choose them by name). The instrument is never random. |
 | **bpm** | |
 
 The exercise **loops**: after each take the next one starts by itself (the same exercise,
@@ -117,3 +122,25 @@ visible during the next.
 The piano plays low (root in octave 2, chord tones in the octave below middle C);
 **headphones are recommended**, otherwise the microphone hears the piano. Grading: see
 [Grading > Chord arpeggios](grading.md#chord-arpeggios).
+
+## Improvise on chords
+
+Improvise over a **backing track** (bass, chords and drums, as
+[Generate > Backing track](generate.md#backing-track-from-chords)) on the chords of a
+progression. The chord sounding is shown big in the tab, with the next one.
+
+| Option | Meaning |
+|---|---|
+| **Progression** | From the catalogue, the standards too. |
+| **Key (written)** | The key you read in. |
+| **Style** | Swing, bossa nova, ballad, jazz pop (it sets the tempo). |
+| **Chords** | Piano, electric piano or jazz guitar. |
+| **Choruses** | The progression 1–8 times. |
+| **Show the notes** | Easy version: chord tones and tensions shown, and the staff. |
+| **Random** | Progression and key drawn at random at every new exercise. |
+| **bpm**, **Input** | Tempo; microphone or MIDI keyboard. |
+
+It is graded chord by chord as *Chord arpeggios* (chord tones and tensions right, the other
+notes wrong, silence counts zero). **Headphones are needed** with the microphone: the
+backing is continuous and the microphone must not hear it. If the sound goes to the
+computer's loudspeakers the tab shows a warning before the take.

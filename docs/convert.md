@@ -40,7 +40,7 @@ the PDF, on a white background so they can be read over other markings. Result: 
 | **Instrument** | `auto` or `trumpet` (if the part name is missing). |
 | **Save next to the original** | Each new PDF is written at once next to its original as `<name>.noted.pdf` (an older one is replaced). Handy for many PDFs at once. |
 
-The same from the command line: `python3 -m musictools fingering part.pdf`
+The same from the command line: `python3 -m musikite fingering part.pdf`
 (see [Command line](command-line.md)).
 
 ## MIDI → Score

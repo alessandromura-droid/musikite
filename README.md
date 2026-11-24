@@ -22,13 +22,22 @@ macOS: get `MusiKitE-arm64.dmg` (Apple silicon) or `MusiKitE-intel.dmg` (Intel) 
 **Releases** page. The app is not signed: open it the first time with right-click > Open.
 Details in [Installation](docs/installation.md).
 
-## Run from the source code
+## Install from the source code (macOS)
 
 ```
-conda install -c conda-forge fluidsynth "portaudio>=19.7"
-python3 -m pip install -r requirements-macbook.txt
-python3 -m musictools check
-python3 -m musictools gui
+git clone https://github.com/alessandromura-droid/musikite.git
+cd musikite && ./install.sh
+```
+
+`install.sh` asks before every step: conda (it offers to install Miniforge if there is
+none), FluidSynth and PortAudio from conda-forge, the Python packages, MusiKitE itself
+(`pip install -e .`, which makes the command `musikite`), the manual page, the dependency
+check, the PATH line in `~/.zshrc` if needed; at the end it lists commands to try:
+
+```
+musikite gui
+musikite --help
+man musikite
 ```
 
 ## Manual
@@ -39,5 +48,5 @@ The full manual is in [`docs/`](docs/README.md), and inside the app: **Help > Ma
 
 MusiKitE is free software under the **GNU General Public License v3.0** — see
 [`LICENSE`](LICENSE). The soundfont *GeneralUser GS* is by S. Christian Collins, under its
-own licence (`musictools/data/GeneralUser-GS-LICENSE.txt`). Fonts and libraries: see
+own licence (`musikite/data/GeneralUser-GS-LICENSE.txt`). Fonts and libraries: see
 [Credits](docs/credits.md).

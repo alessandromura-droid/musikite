@@ -62,7 +62,9 @@ come out late, set *Recording offset* in [Settings > Audio](settings.md#audio).
 The piano roll edits a recording or any MIDI (button **Piano roll** in the tab of a MIDI;
 **Staff** goes back). Time runs left to right with the bar numbers; pitch bottom to top with
 a keyboard on the left (click a key to hear it). One colour per track; the other tracks are
-faded; louder notes are darker; selected notes are orange.
+faded; louder notes are darker; selected notes are orange. Click a bar number: the next
+Play begins at that bar after one count-in bar; double-click it: it plays from there at once
+(see [Playing from a bar](objects.md#playing-from-a-bar)).
 
 ![Piano roll](images/piano-roll.png)
 

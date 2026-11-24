@@ -29,7 +29,9 @@
 | **Trend** | Mean grade of every day, the min–max band and the 7-day moving mean. |
 | **Weekly time** | Minutes per week, stacked by exercise type. |
 
-**Exercise**: all types, or one (Candles, Trend). **Click a day** to see its summary on the
+**Instrument**: all instruments, or one of yours (every attempt records the instrument
+chosen beside the user; attempts made before this existed are shown only with *All
+instruments*). **Exercise**: all types, or one (Candles, Trend). **Click a day** to see its summary on the
 right: exercises done, grades, attempts, minutes. Tooltips give the values. **Refresh**
 re-reads the data, **Today** jumps to today.
 

@@ -21,7 +21,8 @@ Then, for every note:
 The steps above are for **wind instruments** (trumpet, trombone…), whose sound stays while
 you blow. The **piano** (and later guitar, harp, mallets) is heard differently, because
 its sound starts strong and dies away; frame by frame its pitch wobbles and jumps to the
-octave as it decays, which made one note look like two:
+octave as it decays, which made one note look like two. **The piano is meant to be played
+on a MIDI keyboard**: from the microphone the recognition below is rough.
 
 1. every note is found by its **attack** — the moment the sound suddenly grows, compared
    with the rest of the same take, so the distance of the microphone and the kind of

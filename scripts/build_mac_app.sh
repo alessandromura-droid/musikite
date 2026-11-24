@@ -60,7 +60,7 @@ if [ -z "$CONDA" ]; then
     done
 fi
 [ -n "$CONDA" ] || die "conda not found: install Miniconda or Miniforge first \
-(python3 -m musictools check prints how)"
+(python3 -m musikite check prints how)"
 BASE="$("$CONDA" info --base)"
 ENV_DIR="$BASE/envs/$ENV_NAME"
 PY="$ENV_DIR/bin/python"
@@ -100,12 +100,12 @@ trap 'rm -rf "$WORK"' EXIT
 
 # version = the day of the newest file of the code (the same code gives the same version
 # on both Macs: check it in Finder > Get Info after Dropbox has synchronised)
-NEWEST="$(find "$PROJECT/musictools" "$PROJECT/scripts" -name '*.py' -type f \
+NEWEST="$(find "$PROJECT/musikite" "$PROJECT/scripts" -name '*.py' -type f \
           -exec stat -f '%m' {} + | sort -n | tail -1)"
 VERSION="$(date -r "$NEWEST" +%Y.%m.%d)"
 CODE_TIME="$(date -r "$NEWEST" '+%Y-%m-%d %H:%M')"
 
-ICON_PNG="$PROJECT/musictools/data/icon.png"
+ICON_PNG="$PROJECT/musikite/data/icon.png"
 ICNS=""
 if [ -f "$ICON_PNG" ]; then
     SET="$WORK/MusiKitE.iconset"
@@ -117,7 +117,7 @@ if [ -f "$ICON_PNG" ]; then
     iconutil -c icns "$SET" -o "$WORK/MusiKitE.icns" && ICNS="$WORK/MusiKitE.icns"
 fi
 
-SF2="$PROJECT/musictools/data/GeneralUser-GS.sf2"
+SF2="$PROJECT/musikite/data/GeneralUser-GS.sf2"
 [ -f "$SF2" ] || echo "WARNING: $SF2 not found: the app will have no soundfont"
 [ -f "$PROJECT/docs/README.md" ] || echo "WARNING: docs/ not found: the app will have no manual"
 

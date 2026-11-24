@@ -12,7 +12,7 @@ source code.
 ## Soundfont
 
 **GeneralUser GS** by S. Christian Collins — https://schristiancollins.com/generaluser.php —
-included as the default soundfont. Its own licence (`musictools/data/GeneralUser-GS-LICENSE.txt`,
+included as the default soundfont. Its own licence (`musikite/data/GeneralUser-GS-LICENSE.txt`,
 also inside the app) allows free use and redistribution.
 
 Other free General MIDI soundfonts that can be chosen in
@@ -41,6 +41,8 @@ Other free General MIDI soundfonts that can be chosen in
 | [NumPy](https://numpy.org), [SciPy](https://scipy.org), [pandas](https://pandas.pydata.org) | Signal processing, tables | BSD |
 | [mido](https://mido.readthedocs.io) + [python-rtmidi](https://github.com/SpotlightKid/python-rtmidi) | MIDI keyboard | MIT |
 | [PyInstaller](https://pyinstaller.org) | Building the Mac app | GPL-2.0 with bootloader exception |
+| [TuxGuitar](https://github.com/helge17/tuxguitar) Power Tab import (Julián Casadesús) | `musikite/powertab.py` is a Python port of it (reading .ptb files) | LGPL-2.1 |
+| [PyGuitarPro](https://github.com/Perlence/PyGuitarPro) | Reading Guitar Pro files (`scripts/gp2midi.py`, not in the app) | LGPL-3.0 |
 
 Because the app contains PyMuPDF (AGPL-3.0), the app as a whole is distributed with its
 complete source code, here on GitHub.

@@ -1,0 +1,971 @@
+"""
+Practice > Read & play (trumpet or MIDI keyboard): a block of N exercises (phrases) like the
+other exercises (Start / Pause / Resume, Stop, Repeat, grade 0-10). Every phrase
+is shown with a moving cursor: one count-in bar of metronome, then the player
+plays while the microphone records; every note is checked (port of the MATLAB
+mysmartmusic, logic in playcheck: PlayCheck, PlayQuiz; no Qt). Wrong notes turn
+red; points = base × fraction of notes recognised.
+
+Input: microphone (trumpet) or MIDI keyboard (Settings > Audio: MIDI input). With
+the keyboard, Read & play expects the WRITTEN note (the one read), Listen & repeat
+the note heard; the keys also sound with the soundfont if Settings > Audio
+"Keyboard sound" is on. "First note: G4" (C4 = middle C, written pitch) is shown in
+the bar when Settings > Exercises > <type> > Show first note is on.
+
+QUICK EXERCISE (owner, 2026-11-07): Practice > Read & play / Listen & repeat opens a tab
+whose Start makes ONE new RANDOM exercise (bars, simplify, instrument: settings in the tab;
+made from a piece of a generated duet, phrase.exercise_from_duet — owner 2026-11-09: the user
+is never told about duets, "misleading") — added to Objects (Exercises) and played at once; Again =
+another take, Repeat = the same exercise again; every take is an attempt on that exercise.
+Existing exercises (♩ / ▦, from Generate) are done with a double click on the object: the
+tab is then bound to them (bind). A MIDI/Score is never practised directly.
+The clicks must reach the microphone (loudspeakers, no headphones).
+
+From code:  w = app.open_tool('play_reading'); w.start()          # quick
+            w = app.open_object('<exercise name>'); w.start()     # an existing exercise
+"""
+from . import registry
+from .exercise_ui import exercise_base, CONTROL_FONT_PT, CONTROL_HEIGHT
+from ..playcheck import PlayQuiz, EXERCISE
+
+START_TAKE_MS = 900          # time to look at the phrase before the count-in
+
+
+class _StreamClock:
+    """Stands for the StaffView player: the cursor follows the time heard from
+    the Read & play stream (playcheck.PlayCheck.heard_time)."""
+
+    def __init__(self, pc):
+        self.pc = pc
+        self.t0 = None
+        self.latency = 0.0
+
+    def elapsed(self):
+        # negative during the prelude of Listen & repeat (the phrase heard): the count of
+        # the Click button starts with the count-in, not with the phrase
+        t = self.pc.track_time()
+        return 0.0 if t is None else t
+
+    def stop(self):
+        pass
+
+
+def _is_random(ph):
+    """A random exercise (a piece of a generated duet): it has no Make a variant panel."""
+    return bool((getattr(ph, "origin", None) or {}).get("duet"))
+
+
+def _show_positions(key=None):
+    """SHOW POSITIONS per user AND per instrument (owner, 2026-11-18): settings key
+    `show_positions_by_instrument` {instrument: bool}; the old single value is the default."""
+    from ..progress import settings
+    from .. import instruments as ins
+    st = settings()
+    key = key or ins.current()
+    d = st.get("show_positions_by_instrument") or {}
+    if key in d:
+        return bool(d[key])
+    return bool(st.get("show_positions", False))
+
+
+def _set_show_positions(on, key=None):
+    from ..progress import settings, save_setting
+    from .. import instruments as ins
+    d = dict(settings().get("show_positions_by_instrument") or {})
+    d[key or ins.current()] = bool(on)
+    save_setting("show_positions_by_instrument", d)
+
+
+def _widget_class():
+    from PySide6.QtWidgets import (QVBoxLayout, QHBoxLayout, QGroupBox, QPushButton, QLabel,
+                                   QSpinBox)
+    from PySide6.QtCore import Qt, QTimer
+    from PySide6.QtGui import QFont
+
+    class PlayReadingWidget(exercise_base()):
+        kind = EXERCISE
+        mode = "reading"             # 'repeat' in ListenRepeatWidget
+        LOG = "read & play"
+        result_object = False        # no new object: the grade goes on each exercise (phrase)
+
+        def __init__(self, app):
+            super().__init__()
+            self.app = app
+            self.sv = None
+            self._zoom = 1.0                 # zoom of the staff, kept for every exercise / report
+            self._repeat_questions = None
+            self._bound = None              # phrases of this tab (opened from an exercise)
+            self._quick = None              # quick exercise done (in Objects)
+            self._preview_ph = None         # quick exercise shown, not yet done
+            lay = QVBoxLayout(self)
+            big = QFont()
+            big.setPointSize(15)
+
+            from ..exercise import exercise_settings
+            cfg = exercise_settings(self.kind)
+            # ONE BAR (owner, 2026-11-20: "three panels one inside the other"): Start/Stop,
+            # Again, New, Zoom +, Zoom -, Click, bpm, input, Show positions, Edit, first
+            # note, clock — on one row or two; the variant (Edit) in the right panel
+            self.bpm = QSpinBox()
+            self.bpm.setRange(30, 240)
+            self.bpm.setValue(int(cfg.get("bpm", 90)))       # default: Settings > Exercises
+            self.source = QLabel("")
+            from PySide6.QtWidgets import QComboBox
+            self.input_box = QComboBox()
+            self.input_box.addItems(["Microphone", "MIDI keyboard"])
+            self.input_box.setCurrentText(str(cfg.get("input", "Microphone")))
+            self.input_box.setToolTip("trumpet (microphone) or MIDI keyboard (Settings > Audio: "
+                                      "MIDI input)" + ("; with the keyboard play the WRITTEN note"
+                                                       if self.mode == "reading" else ""))
+            from PySide6.QtWidgets import QCheckBox
+            from .bar import click_button
+            # CLICK BUTTON in the bar (owner, 2026-11-17; it replaces the "Click" box): the
+            # beat of the bar while a take runs, press = audio click off / on, also during
+            # the take; first state from Settings > Exercises > <type> > Click
+            self.click_btn = click_button(bool(cfg.get("click", True)), self._click_toggled)
+            extra = (self.input_box,)                  # no "Input:" label (owner)
+            self.pos_box = None
+            if self.mode == "reading":               # SHOW POSITIONS (owner, 2026-11-09)
+                self.pos_box = QCheckBox("Show positions")
+                self.pos_box.setChecked(_show_positions())   # per instrument (2026-11-18)
+                self.pos_box.setToolTip("the valves (trumpet) or the slide positions (trombone) "
+                                        "under the notes you read")
+                self.pos_box.toggled.connect(self._positions_toggled)
+                extra = extra + (self.pos_box,)
+                self._positions_visible()
+            self.show_first = bool(cfg.get("show_first_note", self.mode == "repeat"))
+            from .bar import hscroll
+            self.quick_box = self._quick_settings(cfg)
+            lay.addWidget(hscroll(self.quick_box))
+            # MAKE A VARIANT = the button Edit: its controls in the right panel (Tools dock;
+            # app.show_side_panel), closed by Run, by another tab, by closing this one
+            self.edit_box = self._edit_controls()
+            self.first_lbl = QLabel("")                   # "First note: G4" (in the bar)
+            fb = QFont()
+            fb.setPointSize(14)
+            fb.setBold(True)
+            self.first_lbl.setFont(fb)
+            self.first_lbl.setToolTip("first note of the exercise (written; C4 = middle C)")
+            bpm_lbl = QLabel("bpm:")
+            bpm_lbl.setToolTip("tempo of the exercise (a different tempo makes a new "
+                               "exercise when you start it)")
+            self.build_controls(extra=[("New", lambda: self.new_quick(),
+                                        "another random exercise with these settings (shown, "
+                                        "not started)"),
+                                       ("Zoom +", lambda: self.zoom(1.25), "larger staff"),
+                                       ("Zoom -", lambda: self.zoom(0.8), "smaller staff"),
+                                       self.click_btn,
+                                       None, bpm_lbl, self.bpm] + list(extra) +
+                                      [("Edit", lambda: self.toggle_edit(),
+                                        "make a variant of this exercise (bars, part, "
+                                        "simplify, transformation): a new exercise, this one "
+                                        "stays as it is"),
+                                       self.first_lbl])
+            self.bar_buttons["Edit"].hide()       # only for one exercise cut from a MIDI
+
+            self.staff_box = QVBoxLayout()
+            lay.addLayout(self.staff_box, 1)
+
+            self.feedback = QLabel("")
+            f2 = QFont()
+            f2.setPointSize(20)
+            self.feedback.setFont(f2)
+            self.feedback.setAlignment(Qt.AlignCenter)
+            self.feedback.setWordWrap(True)            # long titles wrap, never widen the tab
+            self.score_lbl = QLabel("")
+            self.score_lbl.setFont(big)
+            self.score_lbl.setAlignment(Qt.AlignCenter)
+            self.source.setAlignment(Qt.AlignCenter)     # "N exercises" of a bound tab
+            lay.addWidget(self.feedback)
+            lay.addWidget(self.score_lbl)
+            lay.addWidget(self.source)
+
+            self.take_timer = QTimer(self)                 # count-in delay, then end of take
+            self.take_timer.setSingleShot(True)
+            self.take_timer.timeout.connect(self._take_step)
+            self._take_state = None                        # None, 'waiting', 'recording'
+            self.set_answers(False)
+            self.selection_changed()
+            # PREVIEW (owner, 2026-11-17): the random exercise of the settings is made and
+            # shown at once (Listen & repeat: hidden until the end of the take) and made
+            # again when bars / simplify / instrument change; Start does it, New makes another
+            self._regen = QTimer(self)
+            self._regen.setSingleShot(True)
+            self._regen.setInterval(400)
+            self._regen.timeout.connect(self.preview_quick)
+            self.q_bars.valueChanged.connect(lambda *_: self._regen.start())
+            self.q_level.currentIndexChanged.connect(lambda *_: self._regen.start())
+            self.q_instr.currentIndexChanged.connect(lambda *_: self._regen.start())
+            self.q_keysig.currentIndexChanged.connect(lambda *_: self._regen.start())
+            QTimer.singleShot(0, self.preview_quick)
+
+        # ------------------------------------------------------ quick exercise
+        def _quick_settings(self, cfg):
+            """Quick exercise (no exercise bound): bars, simplify, instrument of the random
+            exercise shown in the tab (saved per user). The part of the duet it is cut
+            from is always random and not shown (owner, 2026-11-09)."""
+            from PySide6.QtWidgets import QComboBox
+            from ..phrase import (LEVEL_LABELS, EXERCISE_INSTRUMENTS, INSTRUMENTS, DUET_PARTS,
+                                  KEY_SIG_LABELS, key_sig_value)
+            from ..progress import settings
+            q = dict(settings().get("quick_exercises", {}).get(self.kind, {}))
+            box = QGroupBox("Random exercise (New = another one)")
+            row = QHBoxLayout(box)
+            self.q_part = QComboBox()
+            self.q_part.addItems(list(DUET_PARTS))
+            self.q_part.setCurrentText(str(q.get("part", "random")))
+            self.q_bars = QSpinBox()
+            self.q_bars.setRange(1, 16)
+            self.q_bars.setValue(int(q.get("bars") or cfg.get("bars") or 4))
+            self.q_level = QComboBox()
+            for k, t in LEVEL_LABELS.items():
+                self.q_level.addItem(t, k)
+            self.q_level.setCurrentIndex(max(0, self.q_level.findData(int(q.get("level", 3)))))
+            # THE INSTRUMENT IS CHOSEN BESIDE THE USER (owner, 2026-11-18): no field here;
+            # the combo stays (hidden) and follows the current instrument
+            self.q_instr = QComboBox()
+            self.q_instr.addItems(list(INSTRUMENTS))
+            from .. import instruments as _ins
+            self.q_instr.setCurrentText(_ins.current())
+            # KEY SIGNATURE (owner, 2026-11-17): the written key is random, at most this many
+            # sharps / flats; auto = from Simplify (1-2 none, 3 one, 4 three, 5 five)
+            self.q_keysig = QComboBox()
+            for k, t in KEY_SIG_LABELS.items():
+                self.q_keysig.addItem(t, k)
+            self.q_keysig.setCurrentIndex(max(0, self.q_keysig.findData(
+                key_sig_value(q.get("key_sig", "auto")))))
+            self.q_keysig.setToolTip("key signature of the random exercise (written for the "
+                                     "instrument played): the key is drawn at random with at "
+                                     "most this many sharps / flats")
+            for c in (self.q_part, self.q_level, self.q_instr, self.q_keysig):
+                c.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                c.setMinimumContentsLength(10)
+            self.q_part.setCurrentText("random")
+            self.q_part.hide()
+            self.q_instr.hide()
+            for wdg in (QLabel("Bars:"), self.q_bars,
+                        QLabel("Simplify:"), self.q_level, QLabel("Key:"), self.q_keysig):
+                row.addWidget(wdg)
+            row.addStretch()
+            return box
+
+        def quick_settings(self):
+            from .. import instruments as _ins
+            return dict(part=self.q_part.currentText(), bars=self.q_bars.value(),
+                        level=self.q_level.currentData(), instrument=_ins.current(),
+                        key_sig=self.q_keysig.currentData())
+
+        def _running(self):
+            return (self.ex is not None and self.ex.state not in ("finished", "stopped")) \
+                or self._take_state is not None
+
+        def preview_quick(self):
+            """The random exercise of the quick settings, made and shown (Read & play) or
+            made and kept hidden (Listen & repeat); not in Objects until it is done."""
+            if self._bound or self._running():
+                return None
+            from PySide6.QtWidgets import QApplication
+            from PySide6.QtCore import Qt as _Qt
+            from ..phrase import exercise_from_duet
+            from ..progress import settings, save_setting
+            q = self.quick_settings()
+            try:
+                allq = dict(settings().get("quick_exercises", {}))
+                allq[self.kind] = q
+                save_setting("quick_exercises", allq)
+            except Exception:
+                pass
+            QApplication.setOverrideCursor(_Qt.WaitCursor)
+            try:
+                ph = exercise_from_duet(purpose=self.mode, **q)
+            except Exception as e:
+                self._say(f"no exercise: {type(e).__name__}: {e}")
+                return None
+            finally:
+                QApplication.restoreOverrideCursor()
+            self._preview_ph = ph
+            self._quick = None                   # Start = this one, not the last one done
+            self._first_note(ph)
+            self.feedback.setStyleSheet("")
+            if self.mode == "repeat":
+                self._hide_staff()
+                self.feedback.setText(f"A new exercise ({ph.bars} bars) is ready — press "
+                                      "Start, listen, then repeat after the count-in")
+            else:
+                try:
+                    self._show_staff(ph.to_score(positions=self._positions()))
+                except Exception as e:
+                    self.app.log(f"{self.LOG}: preview: {type(e).__name__}: {e}")
+                self.feedback.setText(ph.title + "  —  press Start")
+            return ph
+
+        def new_quick(self):
+            """New: another random exercise with the same settings (shown, not started)."""
+            if self._bound or self._running():
+                return None
+            return self.preview_quick()
+
+        def _new_quick(self):
+            """The exercise shown (made now if there is none) goes into Objects (Exercises)
+            and is done; after its take Start does it again until New / a change."""
+            if self._preview_ph is None and self._quick:
+                return list(self._quick)
+            if self._preview_ph is None and self.preview_quick() is None:
+                return None
+            ph, self._preview_ph = self._preview_ph, None
+            ph.practice_bpm = float(self.bpm.value())
+            name = self.app.add_object(ph, ph.title, preview=False)   # shown in this tab
+            self.app.log(f"{self.LOG}: new exercise {name}")
+            self._quick = [ph]
+            self._load_edit()
+            return [ph]
+
+        # ------------------------------------------------------ change the exercise
+        def _edit_controls(self):
+            """MAKE A VARIANT (owner, 2026-11-08; in the right panel since 2026-11-20,
+            button Edit): bars, part, simplify, transformation (+ the tempo: the bpm of the
+            bar). A changed exercise is ANOTHER exercise: RUN puts it in Objects (selected,
+            without results), the tab then works on it, the panel closes; the old exercise
+            stays. Reset = the values of the exercise."""
+            from PySide6.QtWidgets import QComboBox, QPushButton, QWidget, QFormLayout
+            from ..phrase import (LEVEL_LABELS, EXERCISE_INSTRUMENTS, INSTRUMENTS,
+                                  transform_tags)
+            box = QWidget()
+            v = QVBoxLayout(box)
+            head = QLabel("<b>Make a variant</b><br>a new exercise; this one stays as it is")
+            head.setWordWrap(True)
+            v.addWidget(head)
+            self.e_title = QLabel("")
+            self.e_title.setWordWrap(True)
+            v.addWidget(self.e_title)
+            self.e_first, self.e_last = QSpinBox(), QSpinBox()
+            for sp in (self.e_first, self.e_last):
+                sp.setRange(0, 9999)
+            self.e_part = QComboBox()
+            self.e_level = QComboBox()
+            for k, t in LEVEL_LABELS.items():
+                self.e_level.addItem(t, k)
+            self.e_instr = QComboBox()
+            self.e_instr.addItems(list(EXERCISE_INSTRUMENTS if self.mode == "reading"
+                                       else INSTRUMENTS))
+            self.e_trans = QComboBox()
+            self.e_trans.addItems(list(transform_tags()))
+            for c in (self.e_part, self.e_level, self.e_instr, self.e_trans):
+                c.setSizeAdjustPolicy(QComboBox.AdjustToMinimumContentsLengthWithIcon)
+                c.setMinimumContentsLength(12)          # the list still shows the whole text
+            bars = QWidget()
+            bl = QHBoxLayout(bars)
+            bl.setContentsMargins(0, 0, 0, 0)
+            for wdg in (self.e_first, QLabel("to"), self.e_last):
+                bl.addWidget(wdg)
+            bl.addStretch(1)
+            form = QFormLayout()
+            form.addRow("Bars", bars)
+            form.addRow("Part", self.e_part)
+            form.addRow("Simplify", self.e_level)
+            form.addRow("Change", self.e_trans)
+            v.addLayout(form)
+            # the variant keeps the instrument of the exercise (owner, 2026-11-18: the
+            # instrument is chosen beside the user): the combo is hidden
+            v.addWidget(self.e_instr)
+            self.e_instr.hide()
+            row = QHBoxLayout()
+            self.e_run = QPushButton("Run")
+            self.e_run.setToolTip("make the variant: a new exercise in Objects (selected), "
+                                  "without results; this tab then works on it")
+            self.e_run.clicked.connect(lambda: self.run_variant())
+            self.e_reset = QPushButton("Reset")
+            self.e_reset.setToolTip("the values of the exercise")
+            self.e_reset.clicked.connect(lambda: self._reset_edit_fields())
+            row.addWidget(self.e_run)
+            row.addWidget(self.e_reset)
+            row.addStretch(1)
+            v.addLayout(row)
+            self.e_info = QLabel("")
+            self.e_info.setWordWrap(True)
+            v.addWidget(self.e_info)
+            v.addStretch(1)
+            box.setEnabled(False)
+            return box
+
+        def toggle_edit(self):
+            """Edit: the variant panel on the right (again = closed)."""
+            if self.app.side_panel_owner() is self:
+                self.app.close_side_panel(self)
+                return None
+            self._reset_edit_fields()
+            ph = self._edit_target()
+            self.e_title.setText(ph.title if ph is not None else "")
+            self.app.show_side_panel(self.edit_box, self, on_close=self._reset_edit_fields)
+            return self.edit_box
+
+        def _reset_edit_fields(self):
+            """The panel shows the values of the exercise again (the bpm of the bar is
+            kept: it belongs to the bar)."""
+            try:
+                b = self.bpm.value()
+                self._load_edit()
+                self.bpm.setValue(b)
+            except RuntimeError:                       # the tab is gone
+                pass
+
+        def run_variant(self):
+            """RUN (owner, 2026-11-20): the variant into Objects, selected (add_object),
+            the tab bound to it; the panel closes (it has done its job)."""
+            new = self._changed_exercise()
+            if new is None:
+                if not self.changes():
+                    self.e_info.setText("nothing changed")
+                return None
+            self.app.close_side_panel(self)
+            return new
+
+        def _edit_target(self):
+            """The exercise the panel changes: one phrase bound to the tab, or the last
+            quick one (a group: none)."""
+            ph = self._phrases()
+            return ph[0] if len(ph) == 1 else None
+
+        def _default_bpm(self):
+            from ..exercise import exercise_settings
+            return int(exercise_settings(self.kind).get("bpm", 90))
+
+        def _load_edit(self):
+            """The values of the exercise in the panel (and its tempo in the bpm field)."""
+            from ..phrase import settings_of
+            ph = self._edit_target()
+            # RANDOM EXERCISES HAVE NO "Make a variant" (owner, 2026-11-09: bars and part refer
+            # to a hidden duet; a new Start makes another one): the panel is hidden in the
+            # quick tab and for random exercises; only those cut from a MIDI / score have it
+            random = (not self._bound) or all(_is_random(p) for p in self._phrases())
+            eb = self.bar_buttons.get("Edit")
+            if eb is not None:
+                eb.setVisible(not random)
+                eb.setEnabled(ph is not None)
+                eb.setToolTip("make a variant of this exercise (bars, part, simplify, "
+                              "transformation): a new exercise, this one stays as it is"
+                              if ph is not None else "open ONE exercise to change it")
+            if random or ph is None:
+                self.edit_box.setEnabled(False)
+                if self.app.side_panel_owner() is self:
+                    self.app.close_side_panel(self)
+                if ph is not None:
+                    self.bpm.setValue(int(round(ph.practice_bpm or self._default_bpm())))
+                return
+            st = settings_of(ph)
+            self.edit_box.setEnabled(True)
+            self.e_title.setText(ph.title)
+            self.e_info.setText("")
+            full = st["can_remake"]
+            lo, hi = st["bars"] or (st["first"], st["last"])
+            for sp, v in ((self.e_first, st["first"]), (self.e_last, st["last"])):
+                sp.setRange(int(lo), int(hi))
+                sp.setValue(int(v))
+            self.e_part.clear()
+            if st["part"] is None or not st["parts"]:
+                self.e_part.addItem(ph.part or "all parts", None)
+            else:
+                for i, n in enumerate(st["parts"]):
+                    self.e_part.addItem(n, i)
+                self.e_part.setCurrentIndex(int(st["part"]))
+            self.e_level.setCurrentIndex(max(0, self.e_level.findData(int(st["level"]))))
+            self.e_instr.setCurrentText(st["instrument"])
+            if self.e_instr.currentText() != st["instrument"]:      # an old transposition
+                self.e_instr.insertItem(0, st["instrument"])           # exercise (hidden now)
+                self.e_instr.setCurrentIndex(0)
+            self.e_trans.setCurrentText(st["transform"])
+            if self.e_trans.currentText() != st["transform"]:
+                self.e_trans.insertItem(0, st["transform"])
+                self.e_trans.setCurrentIndex(0)
+            for w in (self.e_first, self.e_last, self.e_part, self.e_level, self.e_instr):
+                w.setEnabled(full)
+            self.e_info.setText("" if full else "made before 2026-11-08: only tempo and "
+                                                "transposition can change")
+            self.bpm.setValue(int(round(ph.practice_bpm or self._default_bpm())))
+
+        def changes(self):
+            """What differs from the exercise in the panel ({} = nothing)."""
+            from ..phrase import settings_of
+            ph = self._edit_target()
+            if ph is None or not self.edit_box.isEnabled():
+                return {}
+            st = settings_of(ph)
+            new = dict(first=self.e_first.value(), last=self.e_last.value(),
+                       part=self.e_part.currentData(), level=self.e_level.currentData(),
+                       instrument=self.e_instr.currentText(),
+                       transform=self.e_trans.currentText())
+            out = {k: v for k, v in new.items() if st["can_remake"] or k == "transform"
+                   if v != st[k] and not (k == "part" and v is None)}
+            bpm = float(self.bpm.value())
+            if abs(bpm - float(ph.practice_bpm or self._default_bpm())) > 1e-6:
+                out["bpm"] = bpm
+            return out
+
+        def _changed_exercise(self):
+            """The changed exercise as a NEW object in Objects (no results); the tab now
+            works on it. None if nothing changed or it cannot be made."""
+            from ..phrase import remake
+            ch = self.changes()
+            ph = self._edit_target()
+            if not ch or ph is None:
+                return None
+            try:
+                new = remake(ph, bpm=ch.pop("bpm", ph.practice_bpm or self._default_bpm()), **ch)
+            except Exception as e:
+                self._say(f"cannot change it: {type(e).__name__}: {e}")
+                return None
+            name = self.app.add_object(new, new.title, preview=False)   # bound to this tab
+            self.app.log(f"{self.LOG}: changed exercise saved as {name}")
+            if self._bound:
+                self._bound = [new]
+            else:
+                self._quick = [new]
+            self._load_edit()
+            self.selection_changed()
+            return new
+
+        def save_changed(self):
+            """The changed exercise, without results (= Run, from code)."""
+            return self.run_variant()
+
+        # ------------------------------------------------------ exercises
+        def bind(self, phrases):
+            """This tab works on these exercises (double click on an exercise / group,
+            routine); the staff is shown at once; no quick exercise here."""
+            self._bound = list(phrases)
+            self._preview_ph = None
+            self.quick_box.hide()
+            self.bar_buttons["New"].hide()       # its own exercises, nothing to make
+            self.selection_changed()
+            self._load_edit()
+            self._update_again()
+            return self
+
+        def _phrases(self):
+            """Exercises of this tab: the bound ones, else the last quick exercise."""
+            if self._bound:
+                return list(self._bound)
+            return list(self._quick or [])
+
+        def selection_changed(self):
+            """Bound tab: count of exercises and, while no exercise is running, the
+            staff of the first one at once (the selection in Objects is not used)."""
+            try:
+                ph = self._phrases()
+                if self._bound:
+                    self.source.setText(f"   {len(ph)} exercises")
+                elif not ph:
+                    self.source.setText("")
+                running = self.ex is not None and self.ex.state not in ("finished", "stopped")
+                if self._bound and ph and not running:
+                    self._first_note(ph[0])
+                    self.feedback.setStyleSheet("")
+                    if self.mode == "repeat":             # the staff stays hidden: listen first
+                        self._hide_staff()
+                        self.feedback.setText(f"{len(ph)} exercises — press Start, listen, "
+                                              "then repeat after the count-in")
+                    else:
+                        self._show_staff(ph[0].to_score(positions=self._positions()))
+                        self.feedback.setText(ph[0].title + "  —  press Start")
+            except Exception as e:
+                self.app.log(f"{self.LOG}: preview: {type(e).__name__}: {e}")
+
+        # ------------------------------------------------------ hooks for exercise_base
+        def make_quiz(self):
+            try:
+                import sounddevice  # noqa: F401
+                import scipy        # noqa: F401
+            except ImportError as e:
+                self._say(f"missing package: {e.name} (pip install {e.name})")
+                return None
+            if self._repeat_questions is not None:
+                phrases, self._repeat_questions = self._repeat_questions, None
+            elif self._bound:
+                if self.changes():                     # changed and done: a new exercise
+                    if self._changed_exercise() is None:
+                        return None
+                phrases = list(self._bound)
+            else:
+                phrases = self._new_quick()                # quick: a new exercise
+                if phrases:
+                    self._first_note(phrases[0])
+            if not phrases:
+                if self._bound is not None:
+                    self._say("no exercises in this tab")
+                return None
+            source = "microphone"
+            if self.input_box.currentText() == "MIDI keyboard":
+                source = "midi"
+                port = self._midi_port_name()
+                if port is None:
+                    return None
+            from ..midi import Midi
+            if self.mode == "repeat" and not Midi._default_sf2:
+                self._say("a soundfont is needed to play the phrase (Settings > Soundfont…)")
+                return None
+            self.app.log(f"{self.LOG}: {len(phrases)} exercises available, bpm {self.bpm.value()}, "
+                         f"input {source}")
+            return PlayQuiz(phrases, user=self.app.user, bpm=self.bpm.value(),
+                            progress=self.app.progress, mode=self.mode, source=source,
+                            click=self.click_btn.on, positions=self._positions())
+
+        def _positions(self):
+            return self.pos_box is not None and self.pos_box.isChecked()
+
+        def _positions_toggled(self, on):
+            """Saved per user and shown AT ONCE (owner, 2026-11-17): the staff of the
+            exercise shown is drawn again with / without the positions — the quick preview,
+            a bound tab, the exercise waiting for its take in a block; during a take (and
+            on a report) from the next exercise. The next questions of the block too."""
+            try:
+                _set_show_positions(bool(on))
+            except Exception:
+                pass
+            ex = getattr(self, "ex", None)
+            quiz = getattr(ex, "quiz", None) if ex is not None else None
+            if quiz is not None and hasattr(quiz, "positions"):
+                quiz.positions = bool(on)
+            if self._take_state is not None or getattr(self, "_report_shown", False):
+                return                                   # from the next exercise
+            running = ex is not None and ex.state not in ("finished", "stopped")
+            try:
+                from ..phrase import Phrase
+                if running and quiz is not None and getattr(quiz, "current", None):
+                    ph = Phrase.from_dict(quiz.current)
+                    self._show_staff(ph.to_score(positions=self._positions()))
+                elif not self._bound and self._preview_ph is not None:
+                    self._show_staff(self._preview_ph.to_score(positions=self._positions()))
+                else:
+                    self.selection_changed()
+            except Exception as e:
+                self.app.log(f"{self.LOG}: positions: {type(e).__name__}: {e}")
+
+        def instrument_changed(self, key):
+            """Another instrument beside the user (owner, 2026-11-18): Show positions only
+            for the instruments with fingerings (its own state per instrument); the quick
+            tab makes a new random exercise for it."""
+            self._positions_visible()
+            if not self._bound and not self._running():
+                self.q_instr.setCurrentText(key)          # starts the preview again
+
+        def _positions_visible(self):
+            if self.pos_box is None:
+                return
+            from .. import instruments as _ins
+            from ..fingerings import has_fingerings
+            ok = has_fingerings(_ins.played())
+            self.pos_box.blockSignals(True)
+            self.pos_box.setChecked(_show_positions())
+            self.pos_box.blockSignals(False)
+            self.pos_box.setVisible(ok)
+
+        def _midi_port_name(self):
+            """MIDI input port of the settings (or the first one), None + message if none."""
+            from ..midiin import port_name
+            try:
+                name = port_name()
+            except RuntimeError as e:
+                self._say(str(e))
+                return None
+            if name is None:
+                self._say("no MIDI keyboard connected (Settings > Audio: Test MIDI)")
+            return name
+
+        def _first_note(self, q):
+            """'First note: G4' in the bar (written pitch), if the setting is on."""
+            if not self.show_first:
+                self.first_lbl.setText("")
+                return
+            try:
+                from ..phrase import Phrase
+                ph = q if isinstance(q, Phrase) else Phrase.from_dict(q)
+                n = ph.first_note()
+                self.first_lbl.setText(f"First note: {n}" if n else "")
+            except Exception as e:
+                self.first_lbl.setText("")
+                self.app.log(f"{self.LOG}: first note: {type(e).__name__}: {e}")
+
+        def _say(self, text, error=True):
+            """Message under the staff AND in the Log (never only on screen)."""
+            self.feedback.setStyleSheet("color: red" if error else "")
+            self.feedback.setText(text)
+            self.app.log(f"{self.LOG}: {text}")
+
+        def show_question(self, q, replay=True):
+            self.app.log(f"{self.LOG}: exercise {len(self.ex.items) + 1}/{self.ex.n}: "
+                         f"{q.get('title', '')}")
+            self._show_staff(self.ex.quiz.check.score)
+            self._first_note(q)
+            self.feedback.setStyleSheet("")
+            if self.mode == "repeat":
+                self._hide_staff()
+                self.feedback.setText("Listen…")
+            else:
+                self.feedback.setText(q.get("title", ""))
+            self._start_take(delay=START_TAKE_MS)
+
+        def hide_question(self):
+            self._stop_take()
+
+        def set_answers(self, enabled):
+            self.again_btn.setEnabled(bool(enabled))
+
+        def show_feedback(self, r):
+            rep = r.get("report")
+            if rep is not None:                  # expected (green / red) + what was played
+                try:
+                    self._show_report(rep)
+                except Exception as e:
+                    self.app.log(f"{self.LOG}: report: {type(e).__name__}: {e}")
+            elif self.sv is not None:
+                self.sv.mark_errors(r.get("errors") or [])
+                self.sv.set_position(0)
+            self.feedback.setStyleSheet("color: green" if r["correct"] else "color: red")
+            self.feedback.setText(f"Recognised {r['answered']}: {r['rating']}   "
+                                  f"+{r['points']:.0f}")
+            q = self.ex.items[-1]["question"] if self.ex.items else {}
+            if q.get("uid"):
+                # one attempt on the exercise object; its name shows the best of today
+                self.app.phrase_attempt(q["uid"], round(10.0 * r["fraction"], 1),
+                                        rating=r.get("rating"))
+            d = r.get("detail") or {}
+            if d.get("delay") is not None:
+                self.app.log(f"{self.LOG}: delay {d['delay'] * 1000:.0f} ms ({d['delay_source']})")
+
+        def free_listen(self):
+            return None
+
+        def repeat(self, result=None):
+            """Same exercises, same order, same bpm/T (default: the last result)."""
+            result = result or self.last_result
+            if result is None:
+                return None
+            q = result.data.get("quiz", {})
+            if "bpm" in q:
+                self.bpm.setValue(int(round(q["bpm"])))
+            self._repeat_questions = list(result.data["questions"])
+            return self.start(questions_from=result)
+
+        # ------------------------------------------------------ one take
+        def _show_staff(self, score):
+            from ..staffview import StaffView
+            self._report_shown = False
+            if self.sv is not None:
+                self.sv.stop()
+                self.sv.win.setParent(None)
+                self.sv.win.deleteLater()
+            self.sv = StaffView(score, title=score.title)
+            self.sv.on_beat = self.click_btn.show_beat   # the beat on the Click button
+            self.sv.win.setWindowFlags(Qt.Widget)
+            self.sv.hide_toolbar()                       # the exercise has its own bar (Start…)
+            self.staff_box.addWidget(self.sv.win)
+            if abs(self._zoom - 1.0) > 1e-6:
+                self.sv.zoom(self._zoom)                  # same zoom as the previous staff
+
+        def _click_toggled(self, on):
+            """Click button pressed: the audio click of this take (at once) and of the next
+            ones; the visual count goes on."""
+            ex = getattr(self, "ex", None)
+            quiz = getattr(ex, "quiz", None) if ex is not None else None
+            if quiz is not None and hasattr(quiz, "click"):
+                quiz.click = bool(on)
+                if getattr(quiz, "check", None) is not None:
+                    quiz.check.set_click(on)
+            self.app.log(f"{self.LOG}: click {'on' if on else 'off'}")
+
+        def zoom(self, f):
+            """Zoom + / Zoom - of the staff (exercise and report); kept for the next ones."""
+            self._zoom = max(0.2, min(5.0, self._zoom * f))
+            if self.sv is not None:
+                self.sv.zoom(f)
+            return self
+
+        def _hide_staff(self):
+            if self.sv is not None:
+                self.sv.win.hide()
+
+        def _show_report(self, rep):
+            """ScoreReport: the exercise with right / wrong notes and, below, what was played."""
+            score, colors = rep.to_score()
+            self._show_staff(score)
+            self.sv.mark(colors)
+            self.sv.win.show()
+            self._report_shown = True
+
+        def _start_take(self, delay=0):
+            self._stop_take()
+            self._take_state = "waiting"
+            self.take_timer.start(int(delay))
+
+        def _take_step(self):
+            """Timer steps of one take: 'waiting' -> start stream, 'recording' -> evaluate.
+            Any error is written in the Log with its traceback (never silent)."""
+            import traceback
+            try:
+                self._take_step_inner()
+            except Exception as e:
+                self._take_state = None
+                self.feedback.setStyleSheet("color: red")
+                self.feedback.setText(f"Error: {type(e).__name__}: {e} (see Log)")
+                self.app.log(f"{self.LOG} error:\n" + traceback.format_exc())
+
+        def _take_step_inner(self):
+            if self.ex is None or self.ex.state != "asking":
+                self.app.log(f"{self.LOG}: take step ignored (state "
+                             f"{None if self.ex is None else self.ex.state})")
+                self._take_state = None
+                return
+            pc = self.ex.quiz.check
+            if self._take_state == "waiting":
+                self._take_state = "recording"
+                self.take_timer.start(int(pc.duration * 1000) + 300)   # end of the take
+                try:
+                    pc.start(**self._devices())
+                except Exception as e:
+                    self.take_timer.stop()
+                    self._take_state = None
+                    self.feedback.setStyleSheet("color: red")
+                    self.feedback.setText(f"audio: {e}")
+                    self.app.log(f"{self.LOG}: {type(e).__name__}: {e}")
+                    return
+                self.app.log(f"{self.LOG}: recording {pc.duration:.1f} s, stream latency "
+                             f"{1000 * (pc._stream_latency or 0):.0f} ms")
+                self.feedback.setStyleSheet("")
+                if self.ex.quiz.source == "midi":
+                    self._open_midi(pc)
+                if self.mode == "repeat":
+                    self.feedback.setText("Listen… then repeat after the count-in")
+                else:
+                    self.feedback.setText("Count-in… then play")
+                self.sv.clear_marks()
+                self.sv.play(bpm=pc.bpm, start=0, count_in=1, click=False, sound=False)
+                self.sv.player = _StreamClock(pc)             # cursor on the audio stream clock
+            elif self._take_state == "recording":
+                self._take_state = None
+                self._close_midi()
+                self.sv.stop()
+                self.feedback.setText("Checking…")
+                self.feedback.repaint()
+                rec = None
+                try:
+                    pc.wait(timeout=1.0)        # the take is over: never block the window
+                    rec = pc.recording
+                except Exception as e:
+                    self.app.log(f"{self.LOG}: {type(e).__name__}: {e}")
+                if rec is not None:
+                    import numpy as np
+                    peak = float(np.max(np.abs(rec))) if len(rec) else 0.0
+                    self.app.log(f"{self.LOG}: {len(rec)} samples recorded, peak "
+                                 f"{20 * np.log10(peak) if peak > 0 else -999:.0f} dBFS"
+                                 + ("  — SILENCE: microphone permission or input device? "
+                                    "(Settings > Audio…: input level)" if peak < 1e-4 else ""))
+                self.answer(rec)
+
+        def _devices(self):
+            """Input / output devices of the audio settings (None = system default)."""
+            from ..realtime import audio_config
+            cfg = audio_config()
+            return dict(input_device=cfg.get("input_device") or None,
+                        output_device=cfg.get("device") or None)
+
+        def _open_midi(self, pc):
+            """Keyboard notes timed on the stream clock; they also sound with the
+            soundfont (instrument of the exercise) if Settings > Audio: Keyboard sound."""
+            from ..midiin import KeyboardSynth
+            from ..realtime import audio_config
+            name = self._midi_port_name()
+            if name is None:
+                return
+
+            def listen(msg, t):
+                if msg.type == "note_on" and msg.velocity > 0:
+                    pc.midi_message(True, msg.note)
+                elif msg.type in ("note_off", "note_on"):
+                    pc.midi_message(False, msg.note)
+            q = self.ex.quiz.current or {}
+            thru = bool(audio_config().get("midi_thru", True))
+            try:
+                self._midi_in = KeyboardSynth(program=int(q.get("program", 0)), sound=thru,
+                                              listener=listen).open(name)
+            except Exception as e:                  # no sound: still record the notes
+                self.app.log(f"{self.LOG}: keyboard sound off: {type(e).__name__}: {e}")
+                self._midi_in = KeyboardSynth(sound=False, listener=listen).open(name)
+            self.app.log(f"{self.LOG}: MIDI input '{name}'" + (" (sound on)" if thru else ""))
+
+        def _close_midi(self):
+            port = getattr(self, "_midi_in", None)
+            if port is not None:
+                try:
+                    port.close()
+                except Exception:
+                    pass
+                self._midi_in = None
+
+        def _stop_take(self):
+            self._close_midi()
+            self.take_timer.stop()
+            if self._take_state == "recording" and self.ex is not None:
+                try:
+                    self.ex.quiz.check.stop()
+                except Exception:
+                    pass
+            self._take_state = None
+            if self.sv is not None:
+                self.sv.stop()
+
+        def again(self):
+            """Play the current exercise again (counted as a replay)."""
+            if self.ex is None or self.ex.state != "asking":
+                return None
+            self.ex.replay()
+            self._start_take(delay=300)
+            return self
+
+        def stop_clicked(self):
+            self._stop_take()
+            return super().stop_clicked()
+
+        def closing(self):
+            self._stop_take()
+            try:
+                self.app.close_side_panel(self)           # its Edit panel goes with it
+                self.edit_box.setParent(None)
+                self.edit_box.deleteLater()
+            except RuntimeError:
+                pass
+            super().closing()
+
+    return PlayReadingWidget
+
+
+def _repeat_class():
+    from ..playcheck import EXERCISE_REPEAT
+
+    class ListenRepeatWidget(_widget_class()):
+        """Practice > Listen & repeat: the phrase is played (soundfont), then one
+        count-in bar, then the player repeats it (trumpet into the microphone, or a
+        MIDI keyboard). The staff stays hidden until the end; then the report shows
+        the exercise (right / wrong notes) and what was played."""
+        kind = EXERCISE_REPEAT
+        mode = "repeat"
+        LOG = "listen & repeat"
+
+    return ListenRepeatWidget
+
+
+registry.register(registry.Tool(
+    name="play_reading", label="Read & play", category="Practice", kind="session",
+    factory=lambda app: _widget_class()(app),
+    help="Quick exercise: a random exercise is shown at once (New = another one, a change "
+         "of the settings makes it again); Start = play it on your instrument "
+         "(the microphone listens; use loudspeakers, not headphones) or on a MIDI keyboard "
+         "(play the written note); every note is checked after one count-in bar. Show "
+         "positions: valves / slide positions under the notes."))
+
+registry.register(registry.Tool(
+    name="listen_repeat", label="Listen & repeat", category="Practice", kind="session",
+    factory=lambda app: _repeat_class()(app),
+    help="Quick exercise: a random exercise is ready at once (New = another one); Start "
+         "plays it: repeat it (your "
+         "instrument or a MIDI keyboard). The staff is shown at the end with your notes and "
+         "the right ones."))

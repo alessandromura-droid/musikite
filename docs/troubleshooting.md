@@ -13,7 +13,7 @@ Problems reading PDFs are in `~/.musikite/scoreread.log`.
 From the source code:
 
 ```
-python3 -m musictools check
+python3 -m musikite check
 ```
 
 It reports Python, every package (really loaded, not only installed), FluidSynth, the

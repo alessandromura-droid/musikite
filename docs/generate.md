@@ -2,8 +2,11 @@
 
 [← Manual](README.md)
 
-*Generate* makes **new material**: music (duets, canons) and **exercises to do** (without
-results). The options of every tool appear in the **Tools** panel on the right; **Run**
+*Generate* makes **new material**: music (duets, canons, brass trios and quartets, backing
+tracks, duets from a melody, melodies and etudes) and **exercises to do** (without
+results). The menu is split by instrument family: **All instruments**, **Brass**,
+**Woodwinds** (Practice too; **Piano** in Practice); a tool for several families is in each
+of them. The options of every tool appear in the **Tools** panel on the right; **Run**
 makes the objects. Tools that work on existing objects (e.g. exercises from a MIDI) use the
 objects **selected** in the Objects panel and run once for each of them.
 
@@ -42,6 +45,91 @@ Trumpet 2 plays exactly what trumpet 1 played one progression earlier.
 | **Cycles** | How many times trumpet 1 plays the progression (1–12). |
 | **Seed**, **Tempo** | As for the duet. |
 
+## Backing track from chords
+
+A **backing track for improvisation**: a MIDI with three tracks — **bass**, **chords**
+(piano, electric piano or jazz guitar) and **drums** — on a chord progression, in a simple
+jazz / "jazz pop" style. It is only the backing, to play over with *Play* in Objects; to
+practise improvisation **with a grade** use [Chord arpeggios](drills.md#chord-arpeggios)
+(inside a full backing your instrument could not be heard).
+
+| Option | Meaning |
+|---|---|
+| **Progression** | A progression of the catalogue put in the *Chords* field: ii-V-I, blues, rhythm changes, So What… and the changes of some common **standards** (Blue Bossa, Autumn Leaves, All of Me, Take the A Train; chords only, simplified as in the common lead sheets; they start in their usual key). *(chords)* = the chords typed. |
+| **Chords** / **Key** | As in the duet: one chord per bar, `F:G` = two in a bar; changing the key moves the chords; **New** = another progression. |
+| **Chords in concert pitch** | Unticked (default): chords and key are **written for your instrument** (the one beside the user). Ticked: concert pitch. |
+| **Style** | `swing` (walking bass, comping on 2 and 4 / Charleston, ride and hi-hat), `bossa nova`, `ballad` (slow, held chords), `jazz pop` (straight eighths, backbeat). Choosing a style sets its usual tempo. |
+| **Tempo (bpm)** | Swing 140, bossa nova 130, ballad 70, jazz pop 100 by default. |
+| **Choruses** | How many times the progression is played. |
+| **Chords played by** | Piano, electric piano or jazz guitar. |
+| **Seed** | −1 = random. The same seed with the same options gives the same backing. |
+
+The chord voicings have no root (the bass plays it) and move as little as possible from
+one chord to the next; every chorus after the first starts with a crash and ends with a
+small fill. The backing has one **count-in bar** (side stick) and a **final chord** (the
+first chord again, held, with a crash). With *Play* in Objects in a loop (the default) you
+hear the count-in once, the choruses over and over for about 10 minutes without any gap,
+then the final chord. The chord names are stored in the MIDI as text, with a mark that
+tells the app it is a backing made here.
+
+## Duet from a melody
+
+A **duet made from a melody that already exists**: select a **MIDI**, a **score**, an
+**exercise** or a group of exercises in Objects and run it. The result is a new MIDI with two
+parts: the **melody** (unchanged) and a **second voice** written for it. For a MIDI with
+several tracks the melody is the track with the most notes, unless you tick another one; an
+exercise gives its own notes and key (a group: one duet for every exercise).
+
+First the app finds the **chords** of the melody: one chord per bar, or two where the metre
+has two halves (4/4, 2/2, 6/8…), chosen among the chords of the key (plus the dominant
+seventh and the secondary dominants) so that they cover the notes of the melody and follow
+each other in the usual way, starting and ending on the tonic. Where the melody does not
+decide the chord, any good chord is taken. The chords found are written in the Log.
+
+| Option | Meaning |
+|---|---|
+| **Mode** | Default `accompaniment`. `harmony`: the same melody **harmonised** a third (or a sixth) below or above, in the key — major or minor third as the scale and the chord require; on the strong beats, long notes and chord notes the second voice takes a note of the chord (a sixth, a fifth, the octave…); never the unison, no parallel fifths or octaves. `canon`: the **melody itself** in the second voice, entering later. `accompaniment`: the second voice **plays the chords** found. |
+| **Melody track** | The track that is the melody (MIDI and score only). |
+| **Second voice** | The instrument of the second voice; it starts as the instrument beside the user. Its notes stay inside **your range** for that instrument (Settings > Instruments). |
+| **Below / above** | Harmony and accompaniment: the second voice under or over the melody. |
+| **Harmony: interval** | Parallel `thirds` or `sixths`. |
+| **Canon: delay** | Half bar, 1, 2 or 4 bars; `auto` = the one that sounds best. |
+| **Canon: interval** | Unison / octave, fifth, fourth or third, always inside the key; the octave is chosen by the range of the second instrument. `auto` = the one that sounds best. |
+| **Canon: strict** | Ticked: the second voice is exactly the melody. Unticked (default): a note that clashes on a strong beat is moved to the nearest note of the chord, and the last note goes to the tonic chord. |
+| **Canon: even if dissonant** | A canon does not work on every melody: when the best delay and interval are consonant less than 70 % of the time, the app says so and makes nothing. Tick this to make it anyway. |
+| **Accompaniment: pattern** | `long notes` (one note per chord), `half notes`, `beats` (one note a beat, the root on the downbeat and a step towards the next chord before it changes), `arpeggio` (up, up, down; the default); `auto` = long notes under a busy melody, more notes under a slow one. |
+
+Only the options of the chosen mode are used. The object is named "*melody* – *mode*"; the
+tempo, time and key signatures are those of the source. Limits: a pickup bar (upbeat) is not
+recognised, so the strong beats are taken from the start of the MIDI; one key for the whole
+melody; a melody with chords is read as its top notes.
+
+## Brass trio / quartet
+
+Under **Brass**. A **trio** (two trumpets in B♭ and a trombone) or a **quartet** (two
+trumpets, horn in F and trombone) on a chord progression. The two trumpets are a
+[duet](#duet-for-two-trumpets) with the same options (chords, key, rounds, level, seed,
+tempo, bars per phrase, textures, repetition: the same seed gives the same trumpet lines);
+the trombone plays the bass (the root of every chord; at levels 2-3 root and fifth on long
+chords), the horn an inner voice (third or seventh of the chord, moving as little as
+possible). The result is a MIDI; its score shows every part written for its instrument.
+
+## Melodies and etudes
+
+New melodies to read (Read & play exercises) for the **instrument beside you**:
+
+| Option | Meaning |
+|---|---|
+| **How many** | Number of melodies (one group ▦). |
+| **Key (written)** | The key you read in; *Auto* = a key signature suited to the difficulty. |
+| **Difficulty** | 0–10 for your instrument (a melody is kept if it is within 1); *Any* = every melody made. |
+| **Bars** | Length of every melody. |
+| **Seed** | The same seed gives the same melodies. |
+
+They are made by a model that learned the intervals and the rhythms of the melodies of the
+[exercise library](library.md): new melodies, never copies of a source. If not enough
+melodies of the difficulty asked are found, the group has fewer (its title says so).
+
 ## Exercises to do
 
 *Generate > Exercises to do* makes exercises **without results**, to be done later
@@ -57,19 +145,20 @@ Cuts the **selected MIDI or scores** into short phrases. One group per input.
 |---|---|
 | **Bars per exercise** | Starts from [Settings > Exercises](settings.md#exercises) (Read & play 8, Listen & repeat 2). Phrases with fewer than 4 notes are skipped. |
 | **Simplify** | 1 whole and half notes · 2 + quarter notes · 3 + eighth notes (default) · 4 + sixteenth notes · 5 all notes. Notes shorter than the level are removed; each note kept lasts until the next one. |
-| **Instrument** | The instrument you will **play**: `Bb (trumpet)` (written a tone above the sound, treble clef, one voice), `C (piano)`, `C (trombone)` (bass clef, one voice). |
 | **Transformation** | `none`, `transpose` (±1–6 semitones, staying in range), `reverse_melody` (pitches backwards, rhythm kept), `reverse_rhythm`, `inversion` (diatonic mirror around the tonic), `mode` (another church mode on the same tonic), `remove_accidentals`, `even_eighths`, or `random` (a different one for each phrase; written in its title). |
 | **Remove empty bars** | Bars with rests only are removed before cutting (default on). |
 | **Polyphony** | Listen & repeat only (for a MIDI keyboard): all the selected parts together, chords included. Off = one exercise per part, highest note of each chord. |
 | **Include the MIDI** | On (default): every exercise keeps a copy of the source MIDI, so it can be [changed later](read-and-play.md#make-a-variant). Off: no trace of the source. |
 
-Notes outside the [range of the instrument](settings.md#instruments) are moved by octaves
-into it.
+The exercises are for the **instrument chosen beside the user** (see
+[The instrument](getting-started.md#the-instrument)): written for it, in its clef, one
+voice for wind instruments. Notes outside the [range of the instrument](settings.md#instruments)
+are moved by octaves into it.
 
 ### Read & play – generate random / Listen & repeat – generate random
 
 Pieces of **new random music** made by the app (no file needed): bars, simplify,
-key signature, instrument, part. Listen & repeat: 2 bars, trumpet or piano.
+key signature, part; for the instrument chosen beside the user. Listen & repeat: 2 bars.
 
 **Key signature**: every exercise is in a **random key** (major or minor), written for the
 instrument you play, with at most this many sharps / flats. *auto* follows Simplify:
@@ -92,7 +181,8 @@ used last there.
 
 ### Quizzes
 
-*Intervals*, *Interval reading*, *Chord qualities*, *Fingerings & note names*: **Questions
+*Intervals*, *Interval reading*, *Chord qualities*, *Scales and modes by ear*, *Scale
+degrees by ear*, *Cadences by ear*, *Fingerings & note names*: **Questions
 each** plus the options of the quiz (see [Ear training](ear-training.md)). The questions
 are drawn now and stay the same every time the exercise is done (in a different order).
 

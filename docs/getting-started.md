@@ -25,7 +25,7 @@ The window never grows by itself: long scores scroll inside their tab.
 |---|---|
 | **File** | Open… (MIDI, PDF, MusicXML, exercises .mke, routines .mkr, workspaces; several files at once), Save object as…, New / Open / Save workspace, Print… (Cmd+P) |
 | **Edit** | Rename, Remove the selected objects |
-| **View** | View / Play the selected object, Stop sound (Esc), show / hide panels |
+| **View** | View / Play the selected object, Stop sound (Esc), Loop playback, show / hide panels |
 | **Generate** | Make new material: [duets, canons, exercises to do, routines](generate.md) |
 | **Convert** | Turn one object into another: [PDF → MIDI, fingerings, MIDI → score / PDF, merge, transpose](convert.md) |
 | **Practice** | Start an exercise at once ([Read & play](read-and-play.md), [drills](drills.md), [ear training](ear-training.md), [Play over MIDI](play-over-midi.md), [Free player](free-player.md)) |
@@ -37,13 +37,43 @@ Right-clicking an object shows the same tools, limited to those that accept it.
 
 ## Users
 
-The user is chosen in the toolbar at the top (**+** creates a new one). Every user is like
-a separate installation: own [settings](settings.md), own results, own practice diary, own
-workspace. A teacher can create one user per pupil. The window title shows
-"MusiKitE – *user*".
+The user is chosen in the toolbar at the top (**New user…** creates a new one). Every user
+is like a separate installation: own [settings](settings.md), own results, own practice
+diary, own workspace. A teacher can create one user per pupil. The window title shows
+"MusiKitE – *user* – *instrument*".
+
+**New user…** asks the **name** — only letters (A-Z, a-z), digits and spaces, and
+different from every other user (capital letters do not count: "Anna" and "anna" are the
+same name) — and the **instruments
+played**: the brass and woodwinds of a band (trumpets, cornet, flugelhorn, horns, euphonium,
+trombones, tubas, sousaphone, saxophones, clarinets, flute, piccolo, oboe, English horn,
+bassoon — see [Settings > Instruments](settings.md#instruments)). The **piano** is given to every user (as in the
+conservatories). A new user starts with an empty workspace and the default settings.
 
 Changing user saves the workspace of the previous one and loads the new user's last
 workspace.
+
+There is **always at least one user**. At the **first start** the app asks for the first
+user before anything else (**Cancel and exit** closes it). A user is deleted in
+[Settings > Users](settings.md#users): his data are **kept**, and **New user… > Recover
+user** brings him back (choose him in the list, then **Recover**). Deleting the last user
+asks for a new one at once.
+
+### The instrument
+
+Beside the user, **Instrument** chooses the instrument you are studying **now** (one of the
+instruments played; at the start the *preferred* one, see
+[Settings > Instruments](settings.md#instruments)). Exercises are proposed and generated
+for it: there is no *Instrument* field inside the exercises. Changing it:
+
+- the Practice and Generate menus offer what fits it (lip slurs only on the treble-clef valve brass:
+  trumpets, cornet, flugelhorn, tenor horn, mellophone, euphonium in B♭; long tones only on wind instruments);
+- the open Practice tabs make a new exercise for it (their range is the instrument's);
+- every attempt is written in the [practice diary](diary.md) with the instrument, so the
+  diary can be filtered by instrument.
+
+The **piano** is meant to be played on a **MIDI keyboard** (or the computer keyboard): from
+the microphone its notes are recognised only roughly.
 
 ## Objects
 
@@ -72,7 +102,7 @@ More in [Objects and files](objects.md).
 | Button | What it does |
 |---|---|
 | **View** | Shows the object in a tab (a score, the pages of a PDF, an exercise). |
-| **Play** | **Listens** to the object: its staff appears with the red cursor moving and the sound. It becomes **Stop** while playing. |
+| **Play** | **Listens** to the object: its staff appears with the red cursor moving and the sound. It becomes **Stop** while playing. It plays **in a loop** for about 10 minutes, without gaps, until you stop it: **Stop**, **Esc** or the **space bar** (a [backing track](generate.md#backing-track-from-chords): its count-in once, the choruses over and over, the final chord at the end). *View > Loop playback* switches the loop off (remembered for each user). |
 | **Save** | Saves to the file the object came from (the first time: Save as…). With several objects selected, all of them. |
 | **Save as…** | Chooses where and in which format. With several objects selected: one folder for all. |
 
@@ -87,8 +117,12 @@ This difference runs through the whole app:
   metronome click; the cursor moves; **the music is not played** — you play it, and the app
   listens. (Listen & repeat first plays the phrase you must repeat: that is the question.)
 
-Inside an exercise tab the buttons are typically **Start** (then Pause / Resume),
-**Stop**, **Repeat** / **Again**, **Keep**, **Zoom +** / **Zoom −**, **Click**.
+Inside an exercise tab the buttons are in one bar (one row, or two when the window is
+narrow): **Start** (it becomes **Stop** while the exercise runs), **Again**, **Keep**,
+**Zoom +** / **Zoom −**, **Click**, plus the pieces of that exercise (◀ ▶ in a routine,
+New, bpm, input, Edit…).
+
+A new object (generated, converted, opened, a variant…) is **selected** in Objects at once.
 
 ### The Click button
 

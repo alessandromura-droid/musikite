@@ -9,7 +9,7 @@ The output keeps the TEMPO MAP of the files (the first tempo and every tempo cha
 time and key signatures and their resolution. The files must have the SAME tempo map: if
 not, it stops with an error and writes nothing (the old fondi_midi.py made a new MIDI at
 the default 120 bpm and the parts at 100 came out stretched by 1.2: right to listen to,
-wrong in a score and against a metronome). Uses musictools.midi.merge(strict=True).
+wrong in a score and against a metronome). Uses musikite.midi.merge(strict=True).
 """
 import os
 import sys
@@ -32,7 +32,7 @@ def main(argv=None):
     if not inputs:
         print("error: no input MIDI file")
         return 1
-    from musictools.midi import merge
+    from musikite.midi import merge
     try:
         m = merge(*inputs, strict=True)
     except ValueError as e:
