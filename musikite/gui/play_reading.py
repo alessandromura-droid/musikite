@@ -104,8 +104,8 @@ def _widget_class():
             from ..exercise import exercise_settings
             cfg = exercise_settings(self.kind)
             # ONE BAR (owner, 2026-11-20: "three panels one inside the other"): Start/Stop,
-            # Again, New, Zoom +, Zoom -, Click, bpm, input, Show positions, Edit, first
-            # note, clock — on one row or two; the variant (Edit) in the right panel
+            # Again, New, Zoom +, Zoom -, Click, bpm, input, Show positions, Variant…, first
+            # note, clock — on one row or two; the variant (Variant…) in the right panel
             self.bpm = QSpinBox()
             self.bpm.setRange(30, 240)
             self.bpm.setValue(int(cfg.get("bpm", 90)))       # default: Settings > Exercises
@@ -137,7 +137,8 @@ def _widget_class():
             from .bar import hscroll
             self.quick_box = self._quick_settings(cfg)
             lay.addWidget(hscroll(self.quick_box))
-            # MAKE A VARIANT = the button Edit: its controls in the right panel (Tools dock;
+            # MAKE A VARIANT = the button Variant… (owner, 2026-11-25: was "Edit"; Edit is
+            # now the piano roll): its controls in the right panel (Tools dock;
             # app.show_side_panel), closed by Run, by another tab, by closing this one
             self.edit_box = self._edit_controls()
             self.first_lbl = QLabel("")                   # "First note: G4" (in the bar)
@@ -156,12 +157,12 @@ def _widget_class():
                                        ("Zoom -", lambda: self.zoom(0.8), "smaller staff"),
                                        self.click_btn,
                                        None, bpm_lbl, self.bpm] + list(extra) +
-                                      [("Edit", lambda: self.toggle_edit(),
+                                      [("Variant…", lambda: self.toggle_edit(),
                                         "make a variant of this exercise (bars, part, "
-                                        "simplify, transformation): a new exercise, this one "
-                                        "stays as it is"),
+                                        "simplify, transformation, split, adapt): a new "
+                                        "exercise, this one stays as it is"),
                                        self.first_lbl])
-            self.bar_buttons["Edit"].hide()       # only for one exercise cut from a MIDI
+            self.bar_buttons["Variant…"].hide()   # only for one exercise cut from a MIDI
 
             self.staff_box = QVBoxLayout()
             lay.addLayout(self.staff_box, 1)
@@ -323,10 +324,12 @@ def _widget_class():
         # ------------------------------------------------------ change the exercise
         def _edit_controls(self):
             """MAKE A VARIANT (owner, 2026-11-08; in the right panel since 2026-11-20,
-            button Edit): bars, part, simplify, transformation (+ the tempo: the bpm of the
-            bar). A changed exercise is ANOTHER exercise: RUN puts it in Objects (selected,
-            without results), the tab then works on it, the panel closes; the old exercise
-            stays. Reset = the values of the exercise."""
+            button Variant…): bars, part, simplify, transformation (+ the tempo: the bpm of
+            the bar). A changed exercise is ANOTHER exercise: RUN puts it in Objects
+            (selected, without results), the tab then works on it, the panel closes; the
+            old exercise stays. Reset = the values of the exercise. SPLIT and ADAPT (owner,
+            2026-11-25; rework.split / rework.adapt, MATLAB exercise.m): TWO new exercises
+            from this one, as it is (the fields are not used)."""
             from PySide6.QtWidgets import QComboBox, QPushButton, QWidget, QFormLayout
             from ..phrase import (LEVEL_LABELS, EXERCISE_INSTRUMENTS, INSTRUMENTS,
                                   transform_tags)
@@ -381,6 +384,23 @@ def _widget_class():
             row.addWidget(self.e_reset)
             row.addStretch(1)
             v.addLayout(row)
+            # SPLIT / ADAPT (owner, 2026-11-25): two new exercises from this one
+            sub = QLabel("<b>Into two exercises</b> (this one as it is)")
+            sub.setWordWrap(True)
+            v.addWidget(sub)
+            row2 = QHBoxLayout()
+            self.e_split = QPushButton("Split")
+            self.e_split.setToolTip("two exercises: the first half of the bars and the "
+                                    "second half")
+            self.e_split.clicked.connect(lambda: self.run_rework("split"))
+            self.e_adapt = QPushButton("Adapt")
+            self.e_adapt.setToolTip("if a note is shorter than an eighth: every value twice "
+                                    "as long (easier to read), then cut into two exercises")
+            self.e_adapt.clicked.connect(lambda: self.run_rework("adapt"))
+            row2.addWidget(self.e_split)
+            row2.addWidget(self.e_adapt)
+            row2.addStretch(1)
+            v.addLayout(row2)
             self.e_info = QLabel("")
             self.e_info.setWordWrap(True)
             v.addWidget(self.e_info)
@@ -389,7 +409,7 @@ def _widget_class():
             return box
 
         def toggle_edit(self):
-            """Edit: the variant panel on the right (again = closed)."""
+            """Variant…: the variant panel on the right (again = closed)."""
             if self.app.side_panel_owner() is self:
                 self.app.close_side_panel(self)
                 return None
@@ -420,6 +440,47 @@ def _widget_class():
             self.app.close_side_panel(self)
             return new
 
+        def run_rework(self, how):
+            """Split / Adapt (owner, 2026-11-25): rework.split / rework.adapt on the exercise
+            of the panel AS IT IS -> two NEW exercises in Objects (selected, without
+            results); the tab is bound to the first one; the panel closes. Nothing to do
+            (too short to split, no note shorter than an eighth): said in the panel."""
+            from .. import rework
+            ph = self._edit_target()
+            if ph is None:
+                return None
+            try:
+                parts = (rework.split if how == "split" else rework.adapt)(ph)
+            except Exception as e:
+                self._say(f"cannot {how} it: {type(e).__name__}: {e}")
+                return None
+            if len(parts) < 2:
+                self.e_info.setText("too short to split (at least 2 bars, notes in both "
+                                    "halves)" if how == "split" else
+                                    "nothing to adapt: no note shorter than an eighth")
+                return None
+            for p in parts:
+                p.practice_bpm = ph.practice_bpm
+                if p.practice_bpm and how == "adapt":
+                    p.practice_bpm = p.practice_bpm * 2        # values doubled: same speed
+            names = []
+            self.app._hold_new_preview = True
+            try:
+                for p in parts:
+                    names.append(self.app.add_object(p, p.title, preview=False))
+            finally:
+                self.app._hold_new_preview = False
+            self.app.select(*names)
+            self.app.log(f"{self.LOG}: {how} -> " + ", ".join(names))
+            if self._bound:
+                self._bound = [parts[0]]
+            else:
+                self._quick = [parts[0]]
+            self.app.close_side_panel(self)
+            self._load_edit()
+            self.selection_changed()
+            return parts
+
         def _edit_target(self):
             """The exercise the panel changes: one phrase bound to the tab, or the last
             quick one (a group: none)."""
@@ -438,12 +499,13 @@ def _widget_class():
             # to a hidden duet; a new Start makes another one): the panel is hidden in the
             # quick tab and for random exercises; only those cut from a MIDI / score have it
             random = (not self._bound) or all(_is_random(p) for p in self._phrases())
-            eb = self.bar_buttons.get("Edit")
+            eb = self.bar_buttons.get("Variant…")
             if eb is not None:
                 eb.setVisible(not random)
                 eb.setEnabled(ph is not None)
                 eb.setToolTip("make a variant of this exercise (bars, part, simplify, "
-                              "transformation): a new exercise, this one stays as it is"
+                              "transformation, split, adapt): a new exercise, this one stays "
+                              "as it is"
                               if ph is not None else "open ONE exercise to change it")
             if random or ph is None:
                 self.edit_box.setEnabled(False)
@@ -928,7 +990,7 @@ def _widget_class():
         def closing(self):
             self._stop_take()
             try:
-                self.app.close_side_panel(self)           # its Edit panel goes with it
+                self.app.close_side_panel(self)           # its Variant… panel goes with it
                 self.edit_box.setParent(None)
                 self.edit_box.deleteLater()
             except RuntimeError:

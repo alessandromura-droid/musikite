@@ -142,7 +142,8 @@ class Midi:
         return PianoRollView(self, title=title).show()
 
     def makeduet(self, chords=_duet.DEFAULT_CHORDS, rounds=2, level=1, key=None,
-                 concert=False, seed=None, bpm=120, phrase=4, textures=None, repetition=0.7):
+                 concert=False, seed=None, bpm=120, phrase=4, textures=None, repetition=0.7,
+                 engine="classic"):
         """Replace the content with a random duet for two Bb trumpets
         (engine derived from duetti.py, same options plus repetition).
 
@@ -157,11 +158,13 @@ class Midi:
         textures : list or comma-separated string, e.g. 'thirds,canon_bar'
         repetition: 0..1, how much the motif is restated and developed
                    (0 = mostly free lines, 1 = strongly motivic; default 0.7)
+        engine   : 'classic' (duet.py) or 'counterpoint' (duetcp.py: melody by rules +
+                   second voice by the rules of counterpoint)
         """
         if not self.is_empty():
             print("warning: previous content replaced by the duet")
         d = _duet.generate_duet(chords, rounds, level, key, concert, seed, phrase, textures,
-                                repetition)
+                                repetition, engine)
         pm = pretty_midi.PrettyMIDI(initial_tempo=bpm)
         spq = 60.0 / bpm
         pm.time_signature_changes.append(pretty_midi.TimeSignature(4, 4, 0.0))
@@ -176,8 +179,9 @@ class Midi:
         self.pm = pm
         self.source = None
         self.duet_info = dict(seed=d["seed"], level=level, bars=d["nbars"], textures=d["log"],
-                              chords=chords, rounds=rounds, repetition=repetition)
-        print(f"duet: level {level}  seed {d['seed']}  {d['nbars']} bars:  "
+                              chords=chords, rounds=rounds, repetition=repetition,
+                              engine=engine)
+        print(f"duet ({engine}): level {level}  seed {d['seed']}  {d['nbars']} bars:  "
               f"{' | '.join(d['log'])}   (* = trumpet 2 on top)")
         return self
 
@@ -209,7 +213,7 @@ class Midi:
 
     def makeensemble(self, voices="trio", chords=_duet.DEFAULT_CHORDS, rounds=2, level=1,
                      key=None, concert=False, seed=None, bpm=120, phrase=4, textures=None,
-                     repetition=0.7):
+                     repetition=0.7, engine="classic"):
         """Replace the content with a BRASS TRIO (2 trumpets, trombone) or QUARTET (2
         trumpets, horn, trombone) (ensemble.py, owner 2026-11-24): the trumpets are the duet
         of makeduet with the same options and seed, horn and trombone follow the chords."""
@@ -217,7 +221,7 @@ class Midi:
         if not self.is_empty():
             print("warning: previous content replaced by the ensemble")
         d = _ens.generate_ensemble(voices, chords, rounds, level, key, concert, seed, phrase,
-                                   textures, repetition)
+                                   textures, repetition, engine)
         pm = pretty_midi.PrettyMIDI(initial_tempo=bpm)
         spq = 60.0 / bpm
         pm.time_signature_changes.append(pretty_midi.TimeSignature(4, 4, 0.0))
@@ -233,7 +237,7 @@ class Midi:
         self.source = None
         self.duet_info = dict(seed=d["seed"], level=level, bars=d["nbars"], textures=d["log"],
                               chords=chords, rounds=rounds, repetition=repetition,
-                              ensemble=voices)
+                              ensemble=voices, engine=engine)
         print(f"{voices}: level {level}  seed {d['seed']}  {d['nbars']} bars")
         return self
 

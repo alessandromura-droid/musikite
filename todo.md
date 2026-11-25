@@ -1,7 +1,7 @@
 # MusiKitE – to do
 
 What is still to do. `CLAUDE.md` describes the software as it is now: a feature moves
-there when it is done. Updated 2026-11-24.
+there when it is done. Updated 2026-11-25.
 
 ## Fingerings (incremental; 4th valve, F trigger, double horn done 2026-11-24)
 
@@ -12,12 +12,36 @@ there when it is done. Updated 2026-11-24.
   ones: today the T number is only the order).
 - Double horn: the switch point to the Bb side as a setting (today written G#4).
 
-## Rework of recorded material (owner, 2026-11-24)
+## Rework of recorded material (owner, 2026-11-24; editor done 2026-11-25)
 
-- `rework.py` (adapt, split, double, resample, quantize: port of MATLAB exercise.m) exists
-  as Python modules: ADD THEM TO THE EDITOR (piano roll / Make a variant / a recording of the
-  Free player: buttons or a menu), and decide how quantize (seconds -> quarters) relates to
-  the piano roll's Quantize.
+- The editor tools (Bars…, Double…, Resample…, Quantize from playing) are NOT in the piano
+  roll of the Free player (its recorder keeps its own tempo / metre): to decide.
+
+## Editing a PDF (owner, 2026-11-25: to do, in this order of cost)
+
+A PDF has no notes, only drawings and text at a position. An edited PDF is a NEW object:
+the original is never touched (as the fingerings).
+- LOW COST
+  * Page operations: rotate, delete, reorder, merge several PDFs, crop margins
+    (PyMuPDF; only the interface). Useful for band parts.
+  * Title of the PDFs made by the app (from Midi / Score): engrave again with the new title
+    (the title is already a parameter).
+  * Text added on any PDF (title, "Trumpet 2", a note) as the fingerings: text on a white
+    box (works on Android too).
+- MEDIUM COST
+  * Preview of the fingerings before saving: the existing options (size, gap, colour, no
+    repetitions) seen at once on the page, saved only at the end (scoreread run on a
+    temporary file at every change; scoreread not changed in depth).
+  * Change a text already in an external PDF: redaction of the old text + new text. Trap:
+    embedded fonts are subsets (only the characters used), the new text comes out in
+    another font: it works, but it shows.
+- MEDIUM-HIGH COST
+  * Move / delete a single fingering (also corrects wrong readings): scoreread must return
+    the list of the fingerings (page, position, text) instead of writing the PDF directly;
+    a page view to drag / delete them; then the PDF written. Changes scoreread (only on the
+    owner's request); the output with --midi must stay identical. Touch drag on Android.
+- TRAP: added text may disturb scoreread when that PDF is read back to MIDI (with the
+  fingerings on a white box it does not happen today): to check for free text.
 
 ## Play-along graded / improvisation (done 2026-11-24, open points)
 
@@ -61,8 +85,12 @@ there when it is done. Updated 2026-11-24.
 
 - Brass trio / quartet: fixed ensembles; other ensembles (mixed brass chosen by the user,
   woodwinds) later. Trombone and horn lines are simple (roots / chord tones), no motifs.
-- Melodies and etudes: the model learns from the library; with an empty library nothing
-  can be made.
+- DUPLICATION (owner, 2026-11-24): "Read & play – generate random" (a piece of one voice of
+  a new duet) and "Melodies and etudes" make similar exercises, confusing for the user.
+  Both kept for now; when one works better the other is dropped, or they are merged into
+  ONE generation engine (melodies.py already offers the duet voice as an engine).
+- Melody / duet engines (melodygen.py, duetcp.py, 2026-11-24): tune the weights by
+  listening; pickups, modulation, longer forms (ABA with a contrasting middle) not done.
 
 ## Other
 
@@ -70,4 +98,5 @@ there when it is done. Updated 2026-11-24.
 - Cause of the "objects lost" report (2026-11-08) not confirmed.
 - Screenshots of the manual (`docs/images/`).
 - Android port (tablets only).
-- Menus: family submenus exist in Practice / Generate; the right-click menu is still flat.
+- Menus: the family submenus were removed (2026-11-24: tools greyed by instrument); the
+  right-click menu is flat.

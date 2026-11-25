@@ -21,8 +21,12 @@ HIST_SMOOTH_S = 0.1        # quantize: width of the running sum that smooths it 
 
 
 def _new(ph, what, **changes):
-    """A copy of a phrase as a new exercise, its title saying what was done."""
+    """A copy of a phrase as a new exercise, its title saying what was done. It no longer
+    knows how it was cut from its MIDI (2026-11-25: origin 'midi' and the source MIDI
+    removed): Make a variant on it would cut the ORIGINAL bars again."""
     p = ph.copy(**changes)
+    p.origin = {k: v for k, v in (ph.origin or {}).items() if k != "midi"} or None
+    p.source_midi = None
     p.transform = what if ph.transform == "none" else f"{ph.transform}+{what}"
     p.title = f"{ph.title} – {what}" if ph.title else what
     return p
@@ -96,6 +100,40 @@ def resample(ph, step=0.5):
     return _new(ph, f"resampled {step:g}", notes=out)
 
 
+def basic_period(times):
+    """MATLAB `quantize`: the basic period T0 (seconds) of onsets in seconds (sorted) = the
+    commonest time between two onsets (histogram in 1 ms bins, centred running sum over
+    100 ms, its maximum). Also used by the piano roll (Quantize from playing)."""
+    t = sorted(float(x) for x in times)
+    if len(t) < 2:
+        raise ValueError("at least two onsets are needed")
+    da = [t[i] - t[i - 1] for i in range(1, len(t))]
+    nb = int(max(da) / HIST_STEP_S) + 11
+    hist = [0] * nb
+    for x in da:
+        hist[min(nb - 1, int(round(x / HIST_STEP_S)))] += 1
+    w = max(1, int(round(HIST_SMOOTH_S / HIST_STEP_S)))
+    half = w // 2                                   # centred running sum (filter2)
+    sm = []
+    pre = [0]
+    for v in hist:
+        pre.append(pre[-1] + v)
+    for i in range(nb):
+        lo, hi = max(0, i - half), min(nb, i - half + w)
+        sm.append(pre[hi] - pre[max(0, lo)])
+    i_max = max(range(nb), key=lambda i: sm[i])
+    return max(i_max * HIST_STEP_S, HIST_STEP_S)
+
+
+def stamps(times, T0):
+    """Onsets (seconds, sorted, from 0) on the grid of T0: every time between two onsets
+    rounded to a whole number of T0, accumulated (MATLAB `quantize`)."""
+    out = [0.0]
+    for i in range(1, len(times)):
+        out.append(out[-1] + round((times[i] - times[i - 1]) / T0) * T0)
+    return out
+
+
 def quantize(times, pitches, program=56, title="Quantized", transposition=None,
              instrument=None):
     """MATLAB `quantize`: a performance (note onsets in SECONDS, any start) -> a phrase in
@@ -114,25 +152,8 @@ def quantize(times, pitches, program=56, title="Quantized", transposition=None,
         notes = [[0.0, 0.5, pitch[0]]]
         bpm = 120.0
     else:
-        da = [t[i] - t[i - 1] for i in range(1, len(t))]
-        nb = int(max(da) / HIST_STEP_S) + 11
-        hist = [0] * nb
-        for x in da:
-            hist[min(nb - 1, int(round(x / HIST_STEP_S)))] += 1
-        w = max(1, int(round(HIST_SMOOTH_S / HIST_STEP_S)))
-        half = w // 2                                   # centred running sum (filter2)
-        sm, acc = [], 0
-        pre = [0]
-        for v in hist:
-            pre.append(pre[-1] + v)
-        for i in range(nb):
-            lo, hi = max(0, i - half), min(nb, i - half + w)
-            sm.append(pre[hi] - pre[max(0, lo)])
-        i_max = max(range(nb), key=lambda i: sm[i])
-        T0 = max(i_max * HIST_STEP_S, HIST_STEP_S)
-        stamp = [0.0]
-        for i in range(1, len(t)):
-            stamp.append(stamp[-1] + round((t[i] - t[i - 1]) / T0) * T0)
+        T0 = basic_period(t)
+        stamp = stamps(t, T0)
         q = [s / T0 * 0.5 for s in stamp]
         dur = [q[i + 1] - q[i] for i in range(len(q) - 1)] + [0.5]
         notes = [[q[i], dur[i], pitch[i]] for i in range(len(q)) if dur[i] > 0]

@@ -71,28 +71,27 @@ class Tool:
     # comes to the front" (Play over MIDI, 2026-11-23: a new MIDI selected must give a new
     # tab, not the one of the previous piece). None = the usual one tab per tool.
     opener: Optional[Callable] = None
-    # FAMILY SUBMENUS (owner, 2026-11-24): the submenus of Practice / Generate where the
-    # tool is listed ("All instruments", "Brass", "Woodwinds", "Piano"); () = families_of()
+    # INSTRUMENT FAMILIES the tool is for (catalogue families: 'brass', 'woodwind', 'sax',
+    # 'keyboard'); () = families_of(): every instrument unless listed in _FAMILY_BY_NAME.
+    # Another instrument beside the user = the menu item greyed (owner, 2026-11-24).
     families: tuple = ()
 
 
 TOOLS = {}
 
-# FAMILY SUBMENUS of Practice and Generate (owner, 2026-11-24): every tool of these menus is
-# in the submenu of the instrument family it is for (a tool for several families in each)
-FAMILY_CATEGORIES = ("Practice", "Generate")
-FAMILY_MENUS = ("All instruments", "Brass", "Woodwinds", "Piano")
+# NO FAMILY SUBMENUS (owner, 2026-11-24, replaces the "All instruments / Brass / Woodwinds
+# / Piano" submenus of the same day): Practice and Generate list every tool; a tool that is
+# not for the instrument beside the user is greyed and cannot be chosen. Families of the
+# catalogue (instruments.CATALOGUE 'family'); lip slurs and long tones use `available`.
 _FAMILY_BY_NAME = {
-    "drill_lip_slurs": ("Brass",), "todo_lip_slurs": ("Brass",),
-    "drill_long_tones": ("Brass", "Woodwinds"), "todo_long_tones": ("Brass", "Woodwinds"),
-    "duet": ("Brass",), "canon": ("Brass",), "brass_ensemble": ("Brass",),
-    "free_player": ("Piano",),
+    "duet": ("brass",), "canon": ("brass",), "brass_ensemble": ("brass",),
+    "free_player": ("keyboard",),
 }
 
 
 def families_of(tool):
-    """Family submenus of a tool (Practice / Generate)."""
-    return tuple(tool.families) or _FAMILY_BY_NAME.get(tool.name, ("All instruments",))
+    """Instrument families the tool is for; () = every instrument."""
+    return tuple(tool.families) or _FAMILY_BY_NAME.get(tool.name, ())
 
 
 def register(tool):
@@ -109,6 +108,11 @@ def by_category(category):
 def is_available(tool, instrument):
     """The tool fits the instrument chosen beside the user."""
     try:
+        fams = families_of(tool)
+        if fams:
+            from .. import instruments as ins
+            if ins.row(instrument)["family"] not in fams:
+                return False
         return tool.available is None or bool(tool.available(instrument))
     except Exception:
         return True

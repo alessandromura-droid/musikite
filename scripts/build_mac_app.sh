@@ -13,7 +13,8 @@
 #      environment is NOT touched. To remove it:  conda env remove -n musikite-build
 #   3. makes MusiKitE.app with PyInstaller (scripts/musikite.spec) in a temporary folder:
 #      Python, PySide6, every library, FluidSynth, the soundfont GeneralUser GS, the fonts,
-#      the manual (docs/) and the icon inside; the microphone permission declared;
+#      the manual (docs/) and the icon inside; the microphone permission declared; the
+#      command line of the app (Contents/Resources/bin/musikite + man page);
 #   4. writes ~/Desktop/MusiKitE-arm64.dmg (Apple silicon) or ~/Desktop/MusiKitE-intel.dmg
 #      (Intel), REPLACING an older one with the same name; the temporary folder is deleted.
 # The app is NOT signed with an Apple Developer ID: the first time, open it with right
@@ -129,6 +130,14 @@ say "building MusiKitE.app $VERSION (code of $CODE_TIME) with PyInstaller (a few
         "$PROJECT/scripts/musikite.spec" )
 APP="$WORK/dist/MusiKitE.app"
 [ -d "$APP" ] || die "PyInstaller made no MusiKitE.app (see the messages above)"
+# the command line of the app (owner, 2026-11-24): the script must be executable
+CLI="$APP/Contents/Resources/bin/musikite"
+[ -e "$CLI" ] || CLI="$(find "$APP/Contents" -path '*/bin/musikite' | head -1)"
+if [ -n "$CLI" ] && [ -e "$CLI" ]; then
+    chmod +x "$(cd -P "$(dirname "$CLI")" && pwd)/musikite"
+else
+    echo "WARNING: bin/musikite not found in the app: Help > Install command-line tool will not work"
+fi
 
 # ---------------------------------------------------------------- dmg
 say "making the dmg"

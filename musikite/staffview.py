@@ -30,6 +30,17 @@ import numpy as np
 
 from .engrave import _unwrap, _flatten_texts
 
+LOG = None                      # f(text): the Log of the app (timings of every staff)
+
+
+def _log(text):
+    try:
+        if LOG is not None:
+            LOG(text)
+    except Exception:
+        pass
+
+
 _TR = re.compile(r'translate\(\s*([-\d.eE]+)[\s,]+([-\d.eE]+)')
 _LINE = re.compile(r'M\s*([-\d.]+)\s+([-\d.]+)\s+L\s*([-\d.]+)\s+([-\d.]+)')
 _SVG = "{http://www.w3.org/2000/svg}"
@@ -37,6 +48,9 @@ _SVG = "{http://www.w3.org/2000/svg}"
 
 def _app():
     from PySide6.QtWidgets import QApplication
+    if QApplication.instance() is None:
+        from .macos import hide_system_edit_items
+        hide_system_edit_items()        # macOS: no Emoji / Dictation / AutoFill in Edit
     return QApplication.instance() or QApplication([])
 
 
@@ -59,25 +73,40 @@ def _classes(el):
 class _Layout:
     """Verovio rendering of the score plus the geometry needed by the view."""
 
-    def __init__(self, score, layout, scale, width):
+    def __init__(self, score, layout, scale, width, xml=None):
+        """xml: the MusicXML text of the score when already known (scorecache: no
+        music21 export)."""
         import verovio
-        fd, xml = tempfile.mkstemp(suffix=".musicxml")
-        os.close(fd)
-        try:
-            score.m21.write("musicxml", fp=xml)
-            tk = verovio.toolkit()
-            opts = {"scale": scale, "footer": "none", "adjustPageHeight": True}
-            if layout == "line":
-                opts.update(breaks="none", adjustPageWidth=True, header="none")
-            else:
-                opts.update(breaks="auto", pageWidth=width, pageHeight=60000, header="auto")
-            tk.setOptions(opts)
-            if not tk.loadFile(xml):
+        T = time.perf_counter
+        self.timing = {}
+        t0 = T()
+        tk = verovio.toolkit()
+        opts = {"scale": scale, "footer": "none", "adjustPageHeight": True}
+        if layout == "line":
+            opts.update(breaks="none", adjustPageWidth=True, header="none")
+        else:
+            opts.update(breaks="auto", pageWidth=width, pageHeight=60000, header="auto")
+        tk.setOptions(opts)
+        if xml is not None:
+            if not tk.loadData(xml):
                 raise RuntimeError("Verovio could not read the score")
-        finally:
-            os.remove(xml)
+        else:
+            fd, path = tempfile.mkstemp(suffix=".musicxml")
+            os.close(fd)
+            try:
+                score.m21.write("musicxml", fp=path)
+                if not tk.loadFile(path):
+                    raise RuntimeError("Verovio could not read the score")
+            finally:
+                os.remove(path)
+        self.timing["verovio load"] = T() - t0
+        t0 = T()
         self.raw = tk.renderToSVG(1)
+        self.timing["verovio svg"] = T() - t0
+        t0 = T()
         tm = tk.renderToTimemap({"includeRests": True, "includeMeasures": True})
+        self.timing["verovio timemap"] = T() - t0
+        t0 = T()
         self.tq = np.array([[e["tstamp"], e["qstamp"]] for e in tm], dtype=float)
         root = ET.fromstring(self.raw)
         self.width_px = float(root.get("width", "0").replace("px", ""))
@@ -91,17 +120,25 @@ class _Layout:
         self._meas = None                            # measure being walked
         self._nsys = -1
         self._walk(inner, 0.0, 0.0, 0, -1)
+        self.timing["svg geometry"] = T() - t0
+        t0 = T()
         # onset (quarters) of every note/rest
         onset = {}
         for e in tm:
             for i in e.get("on", []) + e.get("restsOn", []):
                 onset.setdefault(i, e["qstamp"])
         self.notes = {}                              # (staff, q, pitch|None) -> [ids]
+        pitch_of = self._pitches(tk, onset)          # FAST (2026-11-24): no call per note
         for i, el in self.elems.items():
             if el["cls"] == "note":
-                mv = tk.getMIDIValuesForElement(i)
-                q = onset.get(i, self.ms_to_q(mv.get("time", 0)))
-                key = (el["staff"], round(float(q), 3), int(mv.get("pitch", -1)))
+                p = pitch_of.get(i)
+                if p is None or i not in onset:          # rare: ask Verovio for this note
+                    mv = tk.getMIDIValuesForElement(i)
+                    p = int(mv.get("pitch", -1)) if p is None else p
+                    q = onset.get(i, self.ms_to_q(mv.get("time", 0)))
+                else:
+                    q = onset[i]
+                key = (el["staff"], round(float(q), 3), int(p))
             else:
                 if i not in onset:
                     continue
@@ -140,6 +177,70 @@ class _Layout:
                 seen.add(m["system"])
             bars.append((float(meas_q[mid]), x, m["system"]))
         self.bar_anchors = sorted(bars)
+        self.timing["notes and anchors"] = T() - t0
+
+    _MEI = "{http://www.music-encoding.org/ns/mei}"
+    _XMLID = "{http://www.w3.org/XML/1998/namespace}id"
+    _STEP = {"c": 0, "d": 2, "e": 4, "f": 5, "g": 7, "a": 9, "b": 11}
+    _ACC = {"n": 0, "s": 1, "f": -1, "ss": 2, "x": 2, "ff": -2, "xs": 3, "sx": 3, "ts": 3,
+            "tf": -3}
+
+    def _pitches(self, tk, onset):
+        """{note id: MIDI pitch as getMIDIValuesForElement gives it}, from the MEI of the
+        score read ONCE (owner, 2026-11-24: one Verovio call per note took 4 s on 11 parts
+        × 104 bars): pname + oct + accid (else accid.ges) of every note, plus the offset of
+        its staff (a transposing part) measured on its first, middle and last note; a staff
+        whose sample does not agree is left out (its notes asked one by one, as before)."""
+        try:
+            root = ET.fromstring(tk.getMEI())
+        except Exception:
+            return {}
+        written = {}
+        for n in root.iter(f"{self._MEI}note"):
+            i, pn, octv = n.get(self._XMLID), n.get("pname"), n.get("oct")
+            if not i or pn not in self._STEP or octv is None:
+                continue
+            acc = n.get("accid") or n.get("accid.ges")
+            for a in n.iter(f"{self._MEI}accid"):
+                acc = a.get("accid") or a.get("accid.ges") or acc
+            try:
+                written[i] = (int(octv) + 1) * 12 + self._STEP[pn] + self._ACC.get(acc or "n", 0)
+            except ValueError:
+                continue
+        by_staff = {}
+        for i, el in self.elems.items():
+            if el["cls"] == "note" and i in written and i in onset:
+                by_staff.setdefault(el["staff"], []).append(i)
+        out = {}
+        for staff, ids in by_staff.items():
+            sample = {ids[0], ids[len(ids) // 2], ids[-1]}
+            offs = set()
+            for i in sample:
+                try:
+                    offs.add(int(tk.getMIDIValuesForElement(i).get("pitch", -1)) - written[i])
+                except Exception:
+                    offs.add(None)
+            if len(offs) != 1 or None in offs:
+                continue                              # not reliable: one by one
+            off = offs.pop()
+            for i in ids:
+                out[i] = written[i] + off
+        return out
+
+    STATE = ("raw", "tq", "width_px", "height_px", "k", "elems", "systems", "measures",
+             "notes", "anchors", "bar_anchors")
+
+    def state(self):
+        """What the view needs, without the Verovio toolkit (for the cache)."""
+        return {k: getattr(self, k) for k in self.STATE}
+
+    @classmethod
+    def from_state(cls, st):
+        lay = cls.__new__(cls)
+        for k in cls.STATE:
+            setattr(lay, k, st[k])
+        lay.timing = {"layout from the cache": 0.0}
+        return lay
 
     def ms_to_q(self, ms):
         if len(self.tq) < 2:
@@ -248,9 +349,42 @@ class StaffView:
         from .score import Score
         from .midi import Midi
         self.midi = None                       # the original MIDI, if built from one
+        self._xml = None                       # MusicXML of the score when known (cache)
+        self.loading = None                    # scorecache.FullJob: the rest being made
+        self._cache_key = None                 # key of the WHOLE score in the cache
+        self.on_full = None                    # f(view) when the whole score is shown
+        full_q = None
+        T = time.perf_counter
+        t_all = T()
+        self.timing = {}
+        how = "score given"
+        rows = None                            # note table keys, kept in the cache
         if isinstance(score, Midi):
+            # FAST STAFF OF A MIDI (owner, 2026-11-24): from the cache (memory / disk),
+            # else the first bars at once and the whole score made in the background
+            from . import scorecache as sc
             self.midi = score
-            score = score.to_score()
+            t0 = T()
+            key = sc.key_of(score)
+            hit = sc.get(score, key=key)
+            self.timing["cache"] = T() - t0
+            t0 = T()
+            head = None if hit is not None else sc.head_score(score)
+            if hit is not None:
+                score, self._xml, rows = hit
+                self._cache_key = key
+                how = "from the cache"
+            elif head is not None:
+                score, self._xml, rows = head
+                self.timing["first bars (music21)"] = T() - t0
+                self.loading = sc.FullJob(self.midi, key=key)
+                full_q = sc.length_q(self.midi)
+                how = "first bars, the rest in the background"
+            else:
+                score, self._xml, rows = sc.build(self.midi, key=key)
+                self._cache_key = key
+                self.timing["whole score (music21)"] = T() - t0
+                how = "made now (short MIDI), stored"
         if not isinstance(score, Score):
             raise TypeError("StaffView needs a Score (or a Midi object)")
         self.score = score
@@ -277,22 +411,87 @@ class StaffView:
         self.from_q = None                     # start of the bar clicked (None: never)
         self.on_double_click = None
         self._embedded = False
-        self._rows = self._row_keys()
+        # NOTE TABLE ONLY WHEN NEEDED (owner, 2026-11-24): the keys of score.table() serve
+        # only to colour notes (marks): made at the first use (`_rows`), kept in the cache
+        self._rows_cache = rows
+        self._save_rows = (lambda r, k=key: sc.save_rows(k, r)) if (
+            rows is None and self._cache_key) else None
         self.end_q = float(score.m21.highestTime)
+        if full_q:                              # the cursor may already go to the end
+            self.end_q = max(self.end_q, full_q)
         _app()
+        t0 = T()
         self._build_window()
+        self.timing["window"] = T() - t0
         self._render()
+        self.timing.update(getattr(self, "_render_timing", {}))
+        self._log_timing(how, T() - t_all)
+        if self.loading is not None:
+            from PySide6.QtCore import QTimer
+            self._full_timer = QTimer(self.win)    # dies with the window
+            self._full_timer.setInterval(200)
+            self._full_timer.timeout.connect(self._check_full)
+            self._full_timer.start()
+
+    def _log_timing(self, how, total):
+        """TIMINGS OF A STAFF in the Log (owner, 2026-11-24: find where the time goes)."""
+        parts = ", ".join(f"{k} {v:.2f}s" for k, v in self.timing.items() if v >= 0.005)
+        _log(f"staff '{self.title}': {total:.2f}s ({how}; {len(self.score.m21.parts)} parts, "
+             f"{self.score.measures()} bars): {parts}")
+
+    # ---------------------------------------------------------- the whole score (background)
+    def _check_full(self):
+        """The whole score is ready: it takes the place of the first bars (zoom, cursor,
+        bar clicked kept); not while playing (it waits for the stop)."""
+        job = self.loading
+        try:
+            if job is None:
+                self._full_timer.stop()
+                return
+            if not job.done or self.timer.isActive():
+                return
+            self._full_timer.stop()
+            self.loading = None
+            if job.error or job.result is None:
+                self.status.setText(f"(only the first bars: {job.error})")
+                return
+            self.score, self._xml, rows = job.result
+            self._rows_cache = rows
+            self._cache_key = job.key
+            self._save_rows = None
+            self.end_q = max(float(self.score.m21.highestTime), self.end_q)
+            self._bars = None
+            self._meter_cache = None
+            self.colors = {}
+            T = time.perf_counter
+            t0 = T()
+            self.timing = {}
+            self._render()
+            self.timing.update(getattr(self, "_render_timing", {}))
+            self._log_timing("whole score swapped in", T() - t0)
+            if callable(self.on_full):
+                self.on_full(self)
+        except RuntimeError:                   # the window was closed meanwhile
+            pass
 
     # ---------------------------------------------------------- rows <-> Verovio ids
+    @property
+    def _rows(self):
+        """Keys of the rows of score.table() (made at the first use, then cached)."""
+        if self._rows_cache is None:
+            self._rows_cache = self._row_keys()
+            if callable(getattr(self, "_save_rows", None)):
+                try:
+                    self._save_rows(self._rows_cache)
+                except Exception:
+                    pass
+                self._save_rows = None
+        return self._rows_cache
+
     def _row_keys(self):
         """For every row of score.table(): (staff, start, pitch|None)."""
-        keys = []
-        for ip in range(len(self.score.m21.parts)):
-            t = self.score.table(part=ip)
-            for r in t.itertuples():
-                p = None if r.pitch is None or str(r.pitch) == "<NA>" else int(r.pitch)
-                keys.append((ip, round(float(r.start), 3), p))
-        return keys
+        from .scorecache import row_keys
+        return row_keys(self.score)
 
     def _ids_for_row(self, row):
         key = self._rows[row]
@@ -346,13 +545,35 @@ class StaffView:
         from PySide6.QtWidgets import QGraphicsLineItem
         from PySide6.QtGui import QPen, QColor
         from PySide6.QtCore import QByteArray, Qt
-        self.lay = _Layout(self.score, self.layout_mode, self.scale, self.width)
+        T = time.perf_counter
+        t0 = T()
+        # VEROVIO OUTPUT IN THE CACHE (owner, 2026-11-24): the layout of the whole score
+        # (SVG, timemap, geometry) per line / page, scale and width
+        lay = None
+        if self._cache_key:
+            from . import scorecache as sc
+            st = sc.get_layout(self._cache_key, self.layout_mode, self.scale, self.width)
+            if st is not None:
+                lay = _Layout.from_state(st)
+        if lay is None:
+            lay = _Layout(self.score, self.layout_mode, self.scale, self.width, self._xml)
+            if self._cache_key:
+                from . import scorecache as sc
+                sc.put_layout(self._cache_key, self.layout_mode, self.scale, self.width,
+                              lay.state())
+        self.lay = lay
+        self._render_timing = dict(self.lay.timing)
         idcol = {}
         for row, c in self.colors.items():
             for i in self._ids_for_row(row):
                 idcol[i] = c
         self.scene.clear()
-        self.renderer = QSvgRenderer(QByteArray(self.lay.svg(idcol).encode()))
+        t2 = T()
+        svg_text = self.lay.svg(idcol)
+        self._render_timing["svg for Qt"] = T() - t2
+        t2 = T()
+        self.renderer = QSvgRenderer(QByteArray(svg_text.encode()))
+        self._render_timing["Qt svg renderer"] = T() - t2
         item = QGraphicsSvgItem()
         item.setSharedRenderer(self.renderer)
         self.scene.addItem(item)
@@ -482,7 +703,8 @@ class StaffView:
         else:
             self.view.ensureVisible(x - 50, y0, 100, y1 - y0, 50, 50)
         m = self._measure_at(self.position)
-        self.status.setText(f"beat {self.position:7.2f}   bar {m:4d}")
+        self.status.setText(f"beat {self.position:7.2f}   bar {m:4d}"
+                            + ("   (first bars; the rest is loading…)" if self.loading else ""))
         if callable(self.on_position):
             self.on_position(self.position, m)
         return self

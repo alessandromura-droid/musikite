@@ -1,0 +1,12 @@
+#!/bin/bash
+# musikite: the command line of the MusiKitE Mac app (owner, 2026-11-24). It is copied into
+# MusiKitE.app/Contents/Resources/bin by scripts/build_mac_app.sh; Help > Install
+# command-line tool… puts that folder in the PATH (~/.zshrc).
+SRC="${BASH_SOURCE[0]}"
+while [ -L "$SRC" ]; do
+    DIR="$(cd -P "$(dirname "$SRC")" && pwd)"
+    SRC="$(readlink "$SRC")"
+    case "$SRC" in /*) ;; *) SRC="$DIR/$SRC" ;; esac
+done
+CONTENTS="$(cd -P "$(dirname "$SRC")/../.." && pwd)"
+exec "$CONTENTS/MacOS/MusiKitE" "$@"

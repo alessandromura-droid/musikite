@@ -2,7 +2,7 @@
 Command line:  python3 -m musikite <command> ...   (from the project folder)
 
   duet   [-c CHORDS] [-g ROUNDS] [-l LEVEL] [-k KEY] [--concert] [-s SEED] [-t BPM]
-         [-f PHRASE] [-x TEXTURES] [-r REPETITION]
+         [-f PHRASE] [-x TEXTURES] [-r REPETITION] [-e classic|counterpoint]
   canon  [-c CHORDS] [-d DIFFICULTY] [-b BEATS_PER_CHORD] [-n CYCLES] [-k KEY] [--concert]
          [-s SEED] [-t BPM]           canon for two Bb trumpets (was canon_trumpets.py)
   second_voice  melody.mid [-m harmony|canon|accompaniment] [--track N] [--instrument KEY]
@@ -74,6 +74,9 @@ def main(argv=None):
                         + " (default: chosen at random for the level)")
     d.add_argument("-r", "--repetition", type=float, default=0.7,
                    help="0..1, how much the motif is restated (default 0.7)")
+    d.add_argument("-e", "--engine", default="classic", choices=_duet.ENGINES,
+                   help="classic = the first engine; counterpoint = melody by rules + second "
+                        "voice by the rules of counterpoint (default classic)")
 
     c = sub.add_parser("canon", parents=[common], help="canon for two Bb trumpets")
     c.add_argument("-c", "--chords", default="C F G C",
@@ -189,7 +192,7 @@ def main(argv=None):
             return
         if a.cmd == "duet":
             obj = Midi().makeduet(a.chords, a.rounds, a.level, a.key, a.concert, a.seed,
-                                  a.bpm, a.phrase, a.textures, a.repetition)
+                                  a.bpm, a.phrase, a.textures, a.repetition, a.engine)
         elif a.cmd == "canon":
             obj = Midi().makecanon(a.chords, a.difficulty, a.beats_per_chord, a.cycles, a.key,
                                    a.concert, a.seed, a.bpm)

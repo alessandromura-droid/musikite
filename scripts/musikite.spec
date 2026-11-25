@@ -22,6 +22,11 @@ datas = [
     # the manual (Help > Manual, gui/manual.py) and the licence it links to
     (os.path.join(PROJECT, "docs"), "docs"),
     (os.path.join(PROJECT, "LICENSE"), "."),
+    # the command line of the app (owner, 2026-11-24): Contents/Resources/bin/musikite and
+    # the manual page Contents/Resources/man/man1/musikite.1 (Help > Install command-line
+    # tool… puts bin/ in the PATH; build_mac_app.sh makes the script executable)
+    (os.path.join(PROJECT, "scripts", "app_bin", "musikite"), "bin"),
+    (os.path.join(PROJECT, "man", "man1", "musikite.1"), os.path.join("man", "man1")),
 ]
 binaries = []
 hiddenimports = collect_submodules("musikite") + [

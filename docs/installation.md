@@ -32,6 +32,12 @@ silicon (arm64); "Processor … Intel" = Intel.
 
 The app starts in a few seconds (it unpacks Python and its libraries).
 
+6. **Command line (optional).** **Help > Install command-line tool…** shows one line that
+   makes the command `musikite` (and `man musikite`) work in Terminal, and adds it at the
+   end of `~/.zshrc` only if you confirm; it works in a NEW Terminal window. The app must be
+   in Applications. **Remove** in the same dialog deletes the line. If the app is moved,
+   it says so at the next start. See [Command line](command-line.md).
+
 ### Where your data are
 
 The app never stores your data inside itself, so updating it loses nothing:

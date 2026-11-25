@@ -113,11 +113,15 @@ class Score:
 
     # ------------------------------------------------------------ build
     @classmethod
-    def from_midi(cls, midi, title=None, written=True, divisors=STEP_DIVISORS):
+    def from_midi(cls, midi, title=None, written=True, divisors=STEP_DIVISORS, keys=None):
         """Score from a Midi object (or a MIDI file path).
 
         written  : True = transposing instruments at written pitch (default)
         divisors : quantization grid in divisions of the quarter note
+        keys     : (2026-11-24) for a MIDI without key signature: {track index (tracks
+                   with notes): (tonic, mode) at CONCERT pitch} used instead of the key
+                   estimated on the notes of the part (the first bars of a long MIDI shown
+                   while the rest is being converted take the key of the WHOLE piece)
         """
         import music21
         from music21 import instrument, metadata, key as m21key
@@ -154,11 +158,19 @@ class Score:
         if written:
             s.toWrittenPitch(inPlace=True)
         if not pm.key_signature_changes:       # e.g. MIDI from a PDF: estimate the key per part
-            for p in s.parts:
+            given = keys if (keys and len(tracks) == len(s.parts)) else {}
+            for ip, p in enumerate(s.parts):
                 if p.recurse().getElementsByClass(m21key.KeySignature) or not p.recurse().notes:
                     continue
-                # theory engine (port of the owner's tonalita.m; no music21 analysis)
-                ks = m21key.KeySignature(_th.key_signature(*_th.key_of_notes(_part_notes(p))))
+                if ip in given:                # the key of the whole piece (concert)
+                    t = tracks[ip]
+                    T = (_th.written_part(t.program, t.is_drum, t.name)["transposition"]
+                         if written else 0)
+                    tonic, mode = given[ip]
+                    ks = m21key.KeySignature(_th.key_signature((tonic + T) % 12, mode))
+                else:
+                    # theory engine (port of the owner's tonalita.m; no music21 analysis)
+                    ks = m21key.KeySignature(_th.key_signature(*_th.key_of_notes(_part_notes(p))))
                 first = p.getElementsByClass("Measure").first()
                 (first or p).insert(0, ks)
                 p.makeAccidentals(inPlace=True, overrideStatus=True)

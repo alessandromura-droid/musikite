@@ -50,4 +50,9 @@ complete source code, here on GitHub.
 ## Methods
 
 - Chord–scale theory after Mark Levine, *The Jazz Theory Book*.
+- Melody and duet engines (`melodygen.py`, `duetcp.py`): D.-J. Povel, "Melody Generator: a
+  device for algorithmic music construction" (2010); W. E. Caplin, *Classical Form* (1998)
+  for sentences and periods; D. Temperley, "A probabilistic model of melody perception"
+  (2008); T. Sprockeels et al., "FuxCP" (JIM 2023) for the rules and costs of two-voice
+  counterpoint; W. Piston, *Harmony*, for the usual root progressions.
 - Reading and pitch evaluation ported from the author's earlier MATLAB programs.

@@ -41,10 +41,21 @@ def _chord_params(default_chords, help_text):
 
 
 # ---------------------------------------------------------------- duet
-def _duet(chords, rounds, level, key, concert, seed, bpm, phrase, textures, repetition):
+def _duet(chords, rounds, level, key, concert, seed, bpm, phrase, textures, repetition,
+          engine="classic"):
     return Midi().makeduet(chords=chords, rounds=rounds, level=int(level), key=key or None,
                            concert=concert, seed=None if seed < 0 else seed, bpm=bpm,
-                           phrase=phrase, textures=textures, repetition=repetition)
+                           phrase=phrase, textures=textures, repetition=repetition,
+                           engine=engine)
+
+
+def _engine_param():
+    from ..duet import ENGINES as _E
+    return Param("engine", "choice", _E[0], "Engine", choices=_E,
+                 help="classic = the first duet engine; counterpoint = the melody made by "
+                      "rules (form, cadences, chord tones on the strong beats) and the second "
+                      "voice by the rules of two-voice counterpoint (complementary rhythm, "
+                      "no parallel fifths / octaves, contrary motion)")
 
 
 register(Tool(
@@ -53,6 +64,7 @@ register(Tool(
     name_fn=lambda m, p: f"Duet L{m.duet_info['level']} seed {m.duet_info['seed']}",
     help="Random duet for two Bb trumpets on a chord progression (concert-pitch MIDI).",
     params=[
+        _engine_param(),
         *_chord_params(DEFAULT_CHORDS, "one chord per bar, e.g. 'C F G C' or 'Do Fa Sol Do'; "
                        "'F:G' = two chords in a bar; New = a different progression in the key"),
         Param("rounds", "int", 2, "Rounds", minimum=1, maximum=16,
@@ -518,13 +530,13 @@ from . import playover_ui  # noqa: E402,F401  (Practice / Generate > Play over M
 # ---------------------------------------------------------------- brass trio / quartet
 # (owner, 2026-11-24; was a planned item): ensemble.py, fixed ensembles
 def _ensemble(voices, chords, rounds, level, key, concert, seed, bpm, phrase, textures,
-              repetition):
+              repetition, engine="classic"):
     from ..ensemble import ENSEMBLE_LABELS
     v = next((k for k, lab in ENSEMBLE_LABELS.items() if lab == voices), voices)
     return Midi().makeensemble(voices=v, chords=chords, rounds=rounds, level=int(level),
                                key=key or None, concert=concert,
                                seed=None if seed < 0 else seed, bpm=bpm, phrase=phrase,
-                               textures=textures, repetition=repetition)
+                               textures=textures, repetition=repetition, engine=engine)
 
 
 def _ensemble_labels():
@@ -541,6 +553,7 @@ register(Tool(
          "progression: the trumpets are a duet, horn and trombone follow the chords.",
     params=[
         Param("voices", "choice", _ensemble_labels()[0], "Ensemble", choices=_ensemble_labels()),
+        _engine_param(),
         *_chord_params(DEFAULT_CHORDS, "one chord per bar, e.g. 'C F G C'; 'F:G' = two chords "
                        "in a bar; New = a different progression in the key"),
         Param("rounds", "int", 2, "Rounds", minimum=1, maximum=16,
@@ -560,12 +573,13 @@ register(Tool(
 
 
 # ---------------------------------------------------------------- melodies and etudes
-# (owner, 2026-11-24; was a planned item): melodies.py, Markov model of the library
-def _melodies(count, key, difficulty, bars, seed):
+# (owner, 2026-11-24): melodies.py, rule-based engines of melodygen.py (no library)
+def _melodies(count, engine, key, difficulty, time, bars, seed):
     from ..melodies import make_melodies
     from ..exercise import exercise_settings
     st = make_melodies(int(count), ins_current(), key=key, difficulty=difficulty,
-                       bars=int(bars), seed=None if seed < 0 else seed)
+                       bars=int(bars), seed=None if seed < 0 else seed, engine=engine,
+                       time=time)
     for ph in st.phrases:
         ph.practice_bpm = ph.practice_bpm or float(exercise_settings("play_reading").get("bpm", 90))
     if not st.phrases:
@@ -589,18 +603,35 @@ def _melody_difficulties():
     return _D
 
 
+def _melody_engines():
+    from ..melodies import ENGINES as _E, ENGINE_LABELS as _L
+    return tuple(_L[e] for e in _E)
+
+
+def _melody_times():
+    from ..melodies import TIMES as _T
+    return _T
+
+
 register(Tool(
     name="melodies", label="Melodies and etudes", category="Generate", kind="transform",
     func=_melodies, name_fn=lambda s, p: s.title,
     help="New melodies (Read & play exercises) for the instrument beside you, in a key and a "
-         "difficulty: made by a model of the melodies of the exercise library, never copies "
-         "of them.",
+         "difficulty: form (sentence / period), harmony and cadences first, then the notes "
+         "chosen by the engine.",
     params=[
         Param("count", "int", 5, "How many", minimum=1, maximum=50),
+        Param("engine", "choice", _melody_engines()[0], "Engine", choices=_melody_engines(),
+              help="skeleton = chord tones on the strong beats, then passing and neighbour "
+                   "tones (Povel); probabilistic = note by note, range x proximity x key "
+                   "(Temperley); scale degrees = Markov chain on the degrees with their "
+                   "tendencies; voice of a new duet = the duet engine"),
         Param("key", "choice", "Auto", "Key (written)", choices=_melody_keys(),
               help="Auto = a key signature suited to the difficulty"),
         Param("difficulty", "choice", "Any", "Difficulty", choices=_melody_difficulties(),
               help="0-10 for your instrument (within 1); Any = every melody made"),
+        Param("time", "choice", "4/4", "Time", choices=_melody_times(),
+              help="time signature (the voice of a duet is always 4/4)"),
         Param("bars", "int", 16, "Bars", minimum=4, maximum=32),
         Param("seed", "int", -1, "Seed", minimum=-1, maximum=999999,
               help="-1 = random; same seed = same melodies"),

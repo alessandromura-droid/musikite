@@ -90,13 +90,14 @@ def inner_line(segs):
 
 
 def generate_ensemble(voices="trio", chords=_duet.DEFAULT_CHORDS, rounds=2, level=1, key=None,
-                      concert=False, seed=None, phrase=4, textures=None, repetition=0.7):
+                      concert=False, seed=None, phrase=4, textures=None, repetition=0.7,
+                      engine="classic"):
     """dict(parts=[(name, program, [[start q, dur q, pitch CONCERT]])], kpc, minor, nbars,
     seed, log): kpc / minor as the duet (written trumpet key)."""
     if voices not in ENSEMBLES:
         raise ValueError(f"voices must be one of {', '.join(ENSEMBLES)}")
     d = _duet.generate_duet(chords, rounds, level, key, concert, seed, phrase, textures,
-                            repetition)
+                            repetition, engine)
     segs = segments(chords, rounds, concert)
     lines = {"Trumpet in Bb 1": [[s, du, p + BB_TRUMPET] for s, du, p in d["t1"]
                                  if p is not None],

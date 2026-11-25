@@ -61,6 +61,9 @@ TEXTURES = {          # name: minimum complexity
     'canon_half': 2, 'mirror': 2, 'counterpoint': 2,
 }
 DISSONANT = (1, 2, 10, 11)
+# ENGINES (owner, 2026-11-24): 'classic' = this module (derived from duetti.py);
+# 'counterpoint' = duetcp.py (melody by melodygen.py + second voice by counterpoint rules)
+ENGINES = ("classic", "counterpoint")
 
 
 # --------------------------------------------------------------------------
@@ -788,11 +791,14 @@ def generate(ctx, phrase_len, textures, r):
 
 
 def generate_duet(chords=DEFAULT_CHORDS, rounds=2, level=1, key=None, concert=False,
-                  seed=None, phrase=4, textures=None, repetition=0.7):
+                  seed=None, phrase=4, textures=None, repetition=0.7, engine="classic"):
     """One duet. Returns a dict with the two lines (written pitch), key,
     number of bars, seed and texture log.
     repetition: 0..1, how much the motif is restated and developed
-    (0 = mostly free lines, 1 = strongly motivic)."""
+    (0 = mostly free lines, 1 = strongly motivic).
+    engine: 'classic' (this module) or 'counterpoint' (duetcp.py)."""
+    if engine not in ENGINES:
+        raise ValueError(f"engine must be one of {', '.join(ENGINES)}")
     if level not in LEVELS:
         raise ValueError('level must be 1, 2 or 3')
     if phrase < 1 or rounds < 1:
@@ -817,6 +823,9 @@ def generate_duet(chords=DEFAULT_CHORDS, rounds=2, level=1, key=None, concert=Fa
         allowed = wanted
     if seed is None:
         seed = random.randrange(1_000_000)
+    if engine == "counterpoint":
+        from . import duetcp
+        return duetcp.generate(bars, kpc, minor, level, allowed, seed, phrase, repetition)
     r = random.Random(seed)
     ctx = Ctx(bars, kpc, minor, level, r, repetition)
     T1, T2, log = generate(ctx, phrase, allowed, r)

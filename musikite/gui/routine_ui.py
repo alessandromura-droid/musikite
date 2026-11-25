@@ -351,7 +351,6 @@ def routine_widget(app, routine):
             next_b.clicked.connect(lambda *a: QTimer.singleShot(0, self.next))
             lay.insertWidget(0, prev_b)
             lay.insertWidget(1, next_b)
-            lay.insertSpacing(2, 24)
             self._moves = (prev_b, next_b)
             self._update_moves()
 

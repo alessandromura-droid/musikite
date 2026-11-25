@@ -94,6 +94,10 @@ comma-separated textures: thirds, sixths, melody_acc, pedal, dialogue, echo, can
 .TP
 .BI \-r " X" "\fR, \fP\-\-repetition"
 0..1, how much the motif is restated (0.7).
+.TP
+.BI \-e " classic|counterpoint" "\fR, \fP\-\-engine"
+classic = the first duet engine; counterpoint = the melody made by rules and the second
+voice by the rules of two-voice counterpoint (classic).
 .RE
 .TP
 .B canon
@@ -192,6 +196,12 @@ soundfont used to play.
 .B \-\-play
 play the result.
 .SH FILES
+.TP
+.I MusiKitE.app/Contents/Resources/bin/musikite
+the command of the Mac app; Help > Install command-line tool... puts its folder in the
+PATH (one line in
+.IR ~/.zshrc ,
+asked first).
 .TP
 .I install.sh
 installation from the source code (asks before every step;

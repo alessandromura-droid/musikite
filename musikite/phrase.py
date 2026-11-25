@@ -999,6 +999,85 @@ def transform_tags():
     return tuple(tags)
 
 
+def edited(ph, midi, length_q=None):
+    """EDITED IN THE PIANO ROLL (owner, 2026-11-25): a NEW exercise with the notes of
+    `midi` (the exercise's MIDI edited; concert pitch, every track that is not drums) —
+    an edited exercise is ANOTHER exercise: new uid, no results, title "… – edited". It no
+    longer knows how it was cut from its MIDI (origin 'midi' and the source MIDI removed:
+    Make a variant offers only tempo and transposition). Metre (time-signature changes ->
+    ts_changes), bars (to length_q, at least the last note), tempo (practice_bpm) from the
+    edited MIDI; key estimated again (theory engine). WIND INSTRUMENTS = ONE VOICE: in a
+    chord only the highest note is kept. Returns (new, info) with info = {'chords': notes
+    removed by the one-voice rule, 'outside': notes outside the user's written range}."""
+    import math
+    pm = midi.pm
+    res = float(pm.resolution)
+
+    def q_of(t):
+        return float(pm.time_to_tick(t)) / res
+
+    notes = []
+    for ins in pm.instruments:
+        if ins.is_drum:
+            continue
+        for n in ins.notes:
+            s, e = q_of(n.start), q_of(n.end)
+            notes.append([round(s, 4), round(max(1.0 / 32, e - s), 4), int(n.pitch)])
+    notes.sort()
+    removed = 0
+    if ph.instrument in ONE_VOICE:
+        top = {}
+        for n in notes:
+            k = round(n[0], 4)
+            if k not in top or n[2] > top[k][2]:
+                top[k] = n
+        removed = len(notes) - len(top)
+        notes = [top[k] for k in sorted(top)]
+    if not notes:
+        raise ValueError("no notes")
+    end = max(s + d for s, d, _ in notes)
+    length = max(end, float(length_q or 0.0))
+    tsc = sorted((q_of(x.time), (int(x.numerator), int(x.denominator)))
+                 for x in pm.time_signature_changes)
+    cur = tsc[0][1] if tsc else tuple(ph.ts)
+    first_ts = cur
+    changes, bars, q, i = [], 0, 0.0, 0
+    while q < length - 1e-6 or bars == 0:
+        new_ts = cur
+        while i < len(tsc) and tsc[i][0] <= q + 1e-6:
+            new_ts = tsc[i][1]
+            i += 1
+        if bars > 0 and new_ts != cur:
+            changes.append((bars, new_ts))
+        cur = new_ts
+        if bars == 0:
+            first_ts = cur
+        q += cur[0] * 4.0 / cur[1]
+        bars += 1
+    _, tempi = pm.get_tempo_changes()
+    bpm = float(tempi[0]) if len(tempi) else float(ph.practice_bpm or ph.bpm)
+    tonic, mode = _th.key_of_notes(notes)
+    new = ph.copy()
+    new.notes = [[float(s), float(d), int(p)] for s, d, p in notes]
+    new.bars = int(bars)
+    new.ts = first_ts
+    new.ts_changes = changes or None
+    new.tonic, new.mode = int(tonic) % 12, mode
+    new.bpm = bpm
+    new.practice_bpm = bpm
+    new.origin = {k: v for k, v in (ph.origin or {}).items() if k != "midi"} or None
+    new.source_midi = None
+    new.transform = "edited" if ph.transform == "none" else f"{ph.transform}+edited"
+    new.title = f"{ph.title} – edited" if ph.title else "edited"
+    outside = 0
+    key = next((k for k, v in PLAYED_ON.items() if v == ph.instrument and k in RANGE_DEFAULT),
+               None)
+    if key is not None:
+        lo, hi = instrument_range(key)
+        outside = sum(1 for _, _, p in new.notes if not lo <= p + new.transposition <= hi)
+    return new, dict(chords=removed, outside=outside, bars=int(math.ceil(bars)))
+
+
 def settings_of(ph):
     """What can be changed in an exercise (edit panel): first, last, part, level,
     instrument, transform, bpm (practice_bpm) + the ranges (bars, parts)."""

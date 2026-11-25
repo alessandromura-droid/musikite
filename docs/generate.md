@@ -4,9 +4,10 @@
 
 *Generate* makes **new material**: music (duets, canons, brass trios and quartets, backing
 tracks, duets from a melody, melodies and etudes) and **exercises to do** (without
-results). The menu is split by instrument family: **All instruments**, **Brass**,
-**Woodwinds** (Practice too; **Piano** in Practice); a tool for several families is in each
-of them. The options of every tool appear in the **Tools** panel on the right; **Run**
+results). Every tool is in the menu; a tool that is not for the **Instrument** chosen in
+the toolbar (e.g. the duet for two trumpets when the instrument is the piano) is greyed and
+cannot be chosen (the same in Practice). The exercises are in the submenu **Exercises to
+do**. The options of every tool appear in the **Tools** panel on the right; **Run**
 makes the objects. Tools that work on existing objects (e.g. exercises from a MIDI) use the
 objects **selected** in the Objects panel and run once for each of them.
 
@@ -20,6 +21,7 @@ parts, "Trumpet in Bb 1" and "Trumpet in Bb 2".
 
 | Option | Meaning |
 |---|---|
+| **Engine** | *classic*: the first duet engine. *counterpoint*: the melody is made by rules (phrases in pairs, the motif restated, cadences, chord tones on the strong beats, passing and neighbour tones) and the second voice by the rules of two-voice counterpoint: consonances on the strong beats, no parallel fifths or octaves, contrary motion preferred, a **complementary rhythm** (one voice moves while the other holds). The melody passes to trumpet 2 in some periods (an asterisk in the Log). |
 | **Chords** | One chord per bar, e.g. `C F G C` or in Italian `Do Fa Sol Do`; `F:G` = two chords in one bar. Any chord the app knows: `Dm7`, `Bbmaj7`, `F#m7b5`, `C/E`, `Solm7`… On the Mac you can type it; **New** makes a different progression in the chosen key. |
 | **Key** | The key of the progression (C … B, Cm … Bm), chosen from the list. **Changing the key moves the chords into it**: `C F G G C F G C` in E becomes `E A B B E A B E`. From major to the minor of the same tonic the chords become minor where the key requires it (C F G → Cm Fm G; the dominant stays major). If you type the chords by hand, the key follows their first chord. |
 | **Chords in concert pitch** | Unticked (default): chords and key are **written** for the trumpet (what the player reads). Ticked: they are concert pitch. |
@@ -106,10 +108,11 @@ melody; a melody with chords is read as its top notes.
 
 ## Brass trio / quartet
 
-Under **Brass**. A **trio** (two trumpets in B♭ and a trombone) or a **quartet** (two
+A **trio** (two trumpets in B♭ and a trombone) or a **quartet** (two
 trumpets, horn in F and trombone) on a chord progression. The two trumpets are a
-[duet](#duet-for-two-trumpets) with the same options (chords, key, rounds, level, seed,
-tempo, bars per phrase, textures, repetition: the same seed gives the same trumpet lines);
+[duet](#duet-for-two-trumpets) with the same options (engine, chords, key, rounds, level,
+seed, tempo, bars per phrase, textures, repetition: the same seed gives the same trumpet
+lines);
 the trombone plays the bass (the root of every chord; at levels 2-3 root and fifth on long
 chords), the horn an inner voice (third or seventh of the chord, moving as little as
 possible). The result is a MIDI; its score shows every part written for its instrument.
@@ -121,14 +124,34 @@ New melodies to read (Read & play exercises) for the **instrument beside you**:
 | Option | Meaning |
 |---|---|
 | **How many** | Number of melodies (one group ▦). |
+| **Engine** | How the notes are chosen (see below). |
 | **Key (written)** | The key you read in; *Auto* = a key signature suited to the difficulty. |
-| **Difficulty** | 0–10 for your instrument (a melody is kept if it is within 1); *Any* = every melody made. |
+| **Difficulty** | 0–10 for your instrument (a melody is kept if it is within 1); *Any* = a different difficulty for every melody. |
+| **Time** | 4/4, 3/4, 2/4 or 6/8 (the voice of a duet is always 4/4). |
 | **Bars** | Length of every melody. |
 | **Seed** | The same seed gives the same melodies. |
 
-They are made by a model that learned the intervals and the rhythms of the melodies of the
-[exercise library](library.md): new melodies, never copies of a source. If not enough
-melodies of the difficulty asked are found, the group has fewer (its title says so).
+Every melody is **planned** before its notes: a **form** (an 8-bar *sentence* — an idea of
+two bars, its repetition, shorter fragments, the cadence — or a *period* — a phrase ending
+open on the dominant, answered by a phrase that starts again with the same idea and ends on
+the tonic; longer melodies put themes together and often come back to the first idea at the
+end), a **harmony** (from the tonic, usual chord successions, cadences), a **rhythm** (the
+idea's rhythm comes back with it). The difficulty decides the note values, the largest
+leap, the range, the notes outside the chords (passing and neighbour notes from level 2,
+chromatic neighbours from level 6). Then the **engine** chooses the notes:
+
+- **Skeleton and elaboration (Povel)**: chord notes on the strong beats first, along an
+  arch and a line that goes down to the cadence; then the notes between them (passing and
+  neighbour notes, always resolved by step).
+- **Probabilistic (Temperley)**: note by note, the likely notes are those near the middle
+  of the range, near the previous note and important in the key; chord notes on the
+  strong beats.
+- **Scale degrees (Markov)**: note by note on the degrees of the scale, with their
+  tendencies (the leading note goes to the tonic, the fourth degree down to the third…).
+- **Voice of a new duet**: one of the two voices of a new duet (the classic engine).
+
+The melodies do not come from the [exercise library](library.md). If not enough melodies
+of the difficulty asked are made, the group has fewer (its title says so).
 
 ## Exercises to do
 

@@ -1,9 +1,15 @@
 """
 MidiView: the tab of a Midi object in the main window. It opens on the STAFF
-(StaffView) and the button "Piano roll" switches to the piano roll (PianoRollView),
-where the MIDI is edited exactly as a recording of the Free player (hand, pencil,
-eraser, Quantize…, undo). The edits go into the Midi object itself (Objects > Save
-writes them; Play plays them); back on "Staff" the staff is engraved again.
+(StaffView) and the button "Edit" (owner, 2026-11-25; was "Piano roll") switches to the
+piano roll (PianoRollView), where the MIDI is edited as a recording of the Free player
+(hand, pencil, eraser, Quantize…, undo) plus the editor tools (Bars…, Double…,
+Resample…, Quantize from playing). The edits go into the Midi object itself (Objects >
+Save writes them; Play plays them); back on "Staff" the staff is engraved again.
+
+EDITING A COPY (2026-11-25, exercises ♩ and Play over MIDI ♬: an edited exercise is
+ANOTHER exercise): `MidiView(midi, title, app, edit=True, end_q=…, on_save=fn)` opens on
+the piano roll of a temporary Midi; the bar has "Save as new" = on_save(midi, length_q)
+(the caller makes the new object); closing the tab with edits not saved asks first.
 
 Same interface as StaffView for the main window: win, make_bar(), set_position(),
 listen(), stop(), timer, obj_name.
@@ -11,7 +17,7 @@ listen(), stop(), timer, obj_name.
 
 
 class MidiView:
-    def __init__(self, midi, title, app=None):
+    def __init__(self, midi, title, app=None, edit=False, end_q=None, on_save=None):
         from PySide6.QtWidgets import QWidget, QStackedLayout, QLabel
         from PySide6.QtGui import QFont
         self.midi = midi
@@ -34,7 +40,13 @@ class MidiView:
         self._on_end = None                     # end of the music (loop of Play, 2026-11-18)
         self._loop = False                      # Play in a loop (A B…B C), 2026-11-18
         self._on_double_click = None            # double click on a bar (2026-11-23)
-        self._show_staff()
+        self.end_q = end_q                      # length of an exercise (its empty bars)
+        self.on_save = on_save                  # editing a copy: "Save as new"
+        self.unsaved = False
+        if edit:
+            self._show_roll()
+        else:
+            self._show_staff()
 
     # ---------------------------------------------------------- views
     def _embed(self, view):
@@ -65,7 +77,8 @@ class MidiView:
         from ..pianorollview import PianoRollView
         if self.roll is None:
             self.roll = self._embed(PianoRollView(self.midi, title=self.title,
-                                                  on_change=self._edited))
+                                                  on_change=self._edited, tools=True,
+                                                  end_q=self.end_q))
             self.roll.on_end = self._on_end
             self.roll.loop = self._loop
             self.roll.on_double_click = self._on_double_click
@@ -75,6 +88,7 @@ class MidiView:
 
     def _edited(self, roll):
         self._staff_old = True
+        self.unsaved = True
         if self.app is not None and self.obj_name:
             self.app.log(f"{self.obj_name}: edited in the piano roll ({roll.n_notes()} notes)")
 
@@ -93,11 +107,62 @@ class MidiView:
         except Exception as e:
             if self.app is not None:
                 self.app.log(f"{self.title}: {type(e).__name__}: {e}")
+        self._update_bar()
+        return self
+
+    def edit(self):
+        """The piano roll (Edit MIDI / right click > Edit)."""
+        if self.mode != "roll":
+            self.toggle()
+        return self
+
+    def _update_bar(self):
         if self._bar is not None:
             b = self._bar.buttons
-            b["Piano roll"].setText("Staff" if self.mode == "roll" else "Piano roll")
+            b["Edit"].setText("Staff" if self.mode == "roll" else "Edit")
             b["Line/Page"].setEnabled(self.mode == "staff")
-        return self
+
+    def save_new(self):
+        """Save as new: on_save(midi, length_q) of the caller (a new object); the tab
+        stays (more edits = another Save as new)."""
+        if self.on_save is None:
+            return None
+        length = self.roll.roll.length_q() if self.roll is not None else self.end_q
+        try:
+            res = self.on_save(self.midi, length)
+        except Exception as e:
+            if self.app is not None:
+                self.app.log(f"{self.title}: cannot save: {type(e).__name__}: {e}")
+            return None
+        self.unsaved = False
+        return res
+
+    def space_bar(self):
+        """SPACE BAR in the "Edit: <name>" tab (owner, 2026-11-25): start / stop the sound
+        of the copy being edited (from the bar clicked after one count-in bar, else from
+        the cursor; as listen()). True = used."""
+        v = self.view
+        try:
+            if v.timer.isActive():
+                self.stop()
+            else:
+                self.listen()
+        except Exception as e:
+            if self.app is not None:
+                self.app.log(f"{self.title}: {type(e).__name__}: {e}")
+        return True
+
+    def closing(self):
+        """The tab is closed: a copy with edits not saved -> ask (Save as new / discard)."""
+        self.stop()
+        if self.on_save is None or not self.unsaved:
+            return
+        from PySide6.QtWidgets import QMessageBox
+        a = QMessageBox.question(self.win.window(), "Edited",
+                                 f"Save the edits of '{self.title}' as a new object?",
+                                 QMessageBox.Save | QMessageBox.Discard, QMessageBox.Save)
+        if a == QMessageBox.Save:
+            self.save_new()
 
     # ---------------------------------------------------------- StaffView interface
     def make_bar(self):
@@ -109,9 +174,13 @@ class MidiView:
                  ("Zoom -", lambda: self.view.zoom(0.8)),
                  ("Line/Page", lambda: self.staff.toggle_layout(), "staff on one line / in pages"),
                  None,
-                 ("Piano roll", self.toggle, "switch between staff and piano roll (where the "
-                                             "MIDI is edited)")],
+                 ("Edit", self.toggle, "edit the MIDI in the piano roll; again: back to "
+                                       "the staff")]
+                + ([("Save as new", self.save_new, "the edited copy becomes a NEW object in "
+                                                   "Objects (the original stays as it is)")]
+                   if self.on_save is not None else []),
                 right=self.status)
+            self._update_bar()
         return self._bar
 
     def set_position(self, beat):

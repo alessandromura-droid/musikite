@@ -79,10 +79,17 @@ View > Loop playback applies only when it starts from the beginning.
 
 ## Editing a MIDI
 
-A MIDI opens on the staff; the **Piano roll** button in its tab switches to the
-[piano roll](free-player.md#piano-roll), where notes are moved, drawn, deleted and
-quantised. The edits go into the MIDI object (Play plays them, Save writes them). For clean
-notation afterwards: Convert > MIDI → Score.
+A MIDI opens on the staff; the **Edit** button in its tab (or right click > **Edit**, or
+Edit > **Edit MIDI**) switches to the [piano roll](free-player.md#piano-roll), where notes
+are moved, drawn, deleted and quantised; **Staff** goes back. The edits go into the MIDI
+object (Play plays them, Save writes them). For clean notation afterwards: Convert > MIDI →
+Score.
+
+An **exercise** ♩ (Read & play, Listen & repeat; one at a time, not a whole group) or a
+**Play over MIDI** ♬ is edited the same way, but on a **copy**: a tab "Edit: <name>" opens
+on the piano roll and **Save as new** puts a **new** object in Objects; the original never
+changes. Closing that tab with edits not saved asks whether to save them. Scores, PDFs,
+recordings (Notes), drills, quizzes and routines cannot be edited.
 
 ## Files
 

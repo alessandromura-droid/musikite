@@ -6,11 +6,62 @@ routine, New, bpm, input, Edit…), on one row or more when the width is not eno
 has actions owns a `bar` widget built with action_bar(); the main window shows
 the bar of the current tab.
 """
-BAR_STYLE = ("QPushButton {background: #4a4a4a; color: white; border: 1px solid #333; "
-             "border-radius: 4px; padding: 4px 14px;}"
-             "QPushButton:hover {background: #5a5a5a;}"
-             "QPushButton:pressed {background: #333;}"
-             "QPushButton:disabled {background: #6e6e6e; color: #bbbbbb;}")
+# BUTTONS AS LARGE AS THEIR TEXT, NEVER MORE; NO EMPTY SPACES BETWEEN THEM (owner,
+# 2026-11-25): padding PAD_X / PAD_Y, the flow layout gives every push button the width of
+# its text (`button_size`, also buttons made elsewhere, e.g. ◀ ▶ of a routine; the
+# platform minimum width — macOS — is not used), BAR_SPACING between the widgets, no
+# spacing items (None in action_bar is ignored).
+PAD_X, PAD_Y = 8, 4
+BAR_SPACING = 3
+BAR_MARGIN = 3
+BUTTON_FG = "white"
+# the SECOND ROW (the piano roll's tools, visible only in Edit): same buttons, the row on a
+# very light dark-blue pastel close to grey (owner, 2026-11-25)
+EDIT_ROW_BG = "#5b6678"
+# the FIRST ROW (every tab's bar: Stop, Zoom…; owner, 2026-11-25): warm taupe, the same
+# distance from grey as EDIT_ROW_BG, another hue (not green / red = right / wrong, not the
+# yellow / blue of the beats, not the blue of the Edit row); its labels white
+MAIN_ROW_BG = "#786a5b"
+# BUTTONS TINTED AS THEIR ROW (owner, 2026-11-25): taupe on the first row, Prussian blue on
+# the Edit row, darker than the row so that the white text reads well:
+# (normal, hover, pressed, checked, disabled background, disabled text)
+MAIN_BUTTONS = ("#52473b", "#605446", "#3d342b", "#6e6152", "#6b6054", "#cfc6bb")
+EDIT_BUTTONS = ("#33405a", "#3f4d69", "#262f43", "#4c5b78", "#56607a", "#c5ccd8")
+BUTTON_BG = MAIN_BUTTONS[0]                 # (compatibility: the first row's buttons)
+
+
+def button_style(colors, row):
+    """Stylesheet of the push buttons of a row ('mainRow' / 'editRow')."""
+    bg, hover, pressed, checked, dis_bg, dis_fg = colors
+    return (f"#{row} QPushButton {{background: {bg}; color: {BUTTON_FG}; "
+            f"border: 1px solid #2a2a2a; border-radius: 4px; padding: {PAD_Y}px {PAD_X}px;"
+            f" min-width: 0px;}}"
+            f"#{row} QPushButton:hover {{background: {hover};}}"
+            f"#{row} QPushButton:pressed {{background: {pressed};}}"
+            f"#{row} QPushButton:checked {{background: {checked}; border: 1px solid #e8e8e8;}}"
+            f"#{row} QPushButton:disabled {{background: {dis_bg}; color: {dis_fg};}}")
+
+
+BAR_STYLE = button_style(MAIN_BUTTONS, "mainRow")
+EDIT_ROW_STYLE = (f"#editRow {{background: {EDIT_ROW_BG};}}"
+                  "#editRow QLabel {color: white;}" + button_style(EDIT_BUTTONS, "editRow"))
+MAIN_ROW_STYLE = (f"#mainRow {{background: {MAIN_ROW_BG};}}"
+                  "#mainRow QLabel {color: white;}")
+
+
+def button_size(b):
+    """Size of a bar push button: its text + padding + border, never more (QSize); a
+    button with a fixed width (e.g. the Click button) keeps it, with the same height;
+    None for anything that is not a push button."""
+    from PySide6.QtWidgets import QPushButton
+    from PySide6.QtCore import QSize
+    if not isinstance(b, QPushButton):
+        return None
+    fm = b.fontMetrics()
+    if b.minimumWidth() == b.maximumWidth():
+        return QSize(b.minimumWidth(), fm.height() + 2 * PAD_Y + 2)
+    w = max(fm.horizontalAdvance(t) for t in (b.text() or " ").split("\n"))
+    return QSize(w + 2 * PAD_X + 2 + 2, fm.height() + 2 * PAD_Y + 2)
 
 
 def flow_layout_class():
@@ -70,17 +121,24 @@ def flow_layout_class():
         def _visible(self):
             return [it for it in self._items if not it.isEmpty()]
 
+        @staticmethod
+        def _hint(it):
+            """Size of an item: a push button as large as its text (button_size)."""
+            s = button_size(it.widget()) if it.widget() is not None else None
+            return s if s is not None else it.sizeHint()
+
         def sizeHint(self):
             m = self.contentsMargins()
             its = self._visible()
-            w = sum(it.sizeHint().width() for it in its) + self._sp * max(0, len(its) - 1)
-            h = max([it.sizeHint().height() for it in its] or [0])
+            w = sum(self._hint(it).width() for it in its) + self._sp * max(0, len(its) - 1)
+            h = max([self._hint(it).height() for it in its] or [0])
             return QSize(w + m.left() + m.right(), h + m.top() + m.bottom())
 
         def minimumSize(self):
             s = QSize()
             for it in self._visible():
-                s = s.expandedTo(it.minimumSize())
+                s = s.expandedTo(self._hint(it) if button_size(it.widget()) is not None
+                                 else it.minimumSize())
             m = self.contentsMargins()
             return s + QSize(m.left() + m.right(), m.top() + m.bottom())
 
@@ -89,7 +147,7 @@ def flow_layout_class():
             r = rect.adjusted(m.left(), m.top(), -m.right(), -m.bottom())
             rows, row, x = [], [], 0
             for it in self._visible():
-                w = it.sizeHint().width()
+                w = self._hint(it).width()
                 if row and x + w > r.width():
                     rows.append(row)
                     row, x = [], 0
@@ -99,11 +157,11 @@ def flow_layout_class():
                 rows.append(row)
             y = r.y()
             for row in rows:
-                h = max(it.sizeHint().height() for it in row)
+                h = max(self._hint(it).height() for it in row)
                 if not test:
                     x = r.x()
                     for it in row:
-                        sz = it.sizeHint()
+                        sz = self._hint(it)
                         it.setGeometry(QRect(QPoint(x, y + (h - sz.height()) // 2), sz))
                         x += sz.width() + self._sp
                 y += h + self._sp
@@ -114,21 +172,26 @@ def flow_layout_class():
     return FlowLayout
 
 
-def action_bar(items, right=None):
-    """QWidget with buttons as those of the Objects panel (same size), darker grey.
-    items: list of (text, callback, tooltip), None (spacing) or a ready widget (e.g. the
-    Click button, `click_button`, a spin box, a label); right: widget put at the end (e.g.
-    a clock). The widgets go on ONE ROW, or on more rows when the width is not enough
-    (FlowLayout, owner, 2026-11-20). Returns (bar, {text: button})."""
+def action_bar(items, right=None, edit_row=False):
+    """QWidget with buttons darker grey, each as large as its text.
+    items: list of (text, callback, tooltip), None (ignored since 2026-11-25: no empty
+    spaces between buttons) or a ready widget (e.g. the Click button, `click_button`, a
+    spin box, a label); right: widget put at the end (e.g. a clock), right after the
+    others. The widgets go on ONE ROW, or on more rows when the width is not enough
+    (FlowLayout, owner, 2026-11-20). The row on MAIN_ROW_BG (taupe); edit_row=True: the
+    second row of the piano roll (same buttons, the row on EDIT_ROW_BG). Returns
+    (bar, {text: button})."""
     from PySide6.QtWidgets import QWidget, QPushButton
+    from PySide6.QtCore import Qt
     bar = QWidget()
-    bar.setStyleSheet(BAR_STYLE)
-    lay = flow_layout_class()(bar)
-    lay.setContentsMargins(4, 4, 4, 4)
+    bar.setObjectName("editRow" if edit_row else "mainRow")
+    bar.setAttribute(Qt.WA_StyledBackground, True)
+    bar.setStyleSheet(EDIT_ROW_STYLE if edit_row else BAR_STYLE + MAIN_ROW_STYLE)
+    lay = flow_layout_class()(bar, BAR_SPACING)
+    lay.setContentsMargins(BAR_MARGIN, BAR_MARGIN, BAR_MARGIN, BAR_MARGIN)
     buttons = {}
     for it in items:
         if it is None:
-            lay.addSpacing(24)
             continue
         if not isinstance(it, (tuple, list)):          # a widget made by the caller
             lay.addWidget(it)
@@ -141,7 +204,6 @@ def action_bar(items, right=None):
         lay.addWidget(b)
         buttons[text] = b
     if right is not None:
-        lay.addSpacing(24)
         lay.addWidget(right)
     bar.buttons = buttons
     return bar, buttons
@@ -217,9 +279,9 @@ def click_button(on=True, toggled=None):
             self.toggled_fn = toggled
             self.setFocusPolicy(Qt.NoFocus)          # the space bar stays for the exercise
             fm = self.fontMetrics()
-            # as large as the other bar buttons (same padding 14 + border 1), fixed so that
-            # "Click 12" does not move the bar
-            self.setFixedWidth(fm.horizontalAdvance("Click 12") + 2 * 14 + 2 + 4)
+            # as large as the other bar buttons (same padding PAD_X + border 1), fixed so
+            # that "Click 12" does not move the bar
+            self.setFixedWidth(fm.horizontalAdvance("Click 12") + 2 * PAD_X + 2 + 4)
             self.clicked.connect(self._pressed)
             self._paint()
 
@@ -245,7 +307,7 @@ def click_button(on=True, toggled=None):
         def _paint(self):
             n = self._beat
             if n is None:
-                bg, fg, hover = "#4a4a4a", "white", "#5a5a5a"
+                bg, fg, hover = MAIN_BUTTONS[0], "white", MAIN_BUTTONS[1]
                 self.setText("Click")
             else:
                 bg = beat_colour(n)
@@ -259,9 +321,9 @@ def click_button(on=True, toggled=None):
             self.setFont(f)
             self.setStyleSheet(
                 f"QPushButton {{background: {bg}; color: {fg}; border: 1px solid #333; "
-                f"border-radius: 4px; padding: 4px 14px;}}"
+                f"border-radius: 4px; padding: {PAD_Y}px {PAD_X}px;}}"
                 f"QPushButton:hover {{background: {hover};}}"
-                f"QPushButton:pressed {{background: #333;}}")
+                f"QPushButton:pressed {{background: {MAIN_BUTTONS[2]};}}")
             self.setToolTip("audio click ON: press to switch it off (the count goes on)"
                             if self.on else
                             "audio click OFF: press to switch it on")

@@ -7,7 +7,8 @@ From the project folder (source installation, see [Installation](installation.md
 ## `musikite` (= `python3 -m musikite`)
 
 The command **`musikite`** is made by `./install.sh` (`pip install -e .`, in the conda
-base) and `man musikite` works after it. Without installing, the script `bin/musikite` of
+base) and `man musikite` works after it. With the **Mac app** (the .dmg): Help > **Install
+command-line tool…** (one line in `~/.zshrc`, asked first; the commands below are the same). Without installing, the script `bin/musikite` of
 the project does the same (file names relative to the folder you are in): add once to
 `~/.zshrc` (then open a new Terminal) — NOT together with the installed command:
 
@@ -61,6 +62,7 @@ python3 -m musikite duet -c "C F G C" -g 2 -l 1 -k C -s 42 -t 120 -o duet.mid --
 | `-f, --phrase` | Bars per phrase (4) |
 | `-x, --textures` | Textures allowed |
 | `-r, --repetition` | 0–1 (0.7) |
+| `-e, --engine` | `classic` (default) or `counterpoint`: melody made by rules, second voice by the rules of counterpoint |
 
 ### canon
 

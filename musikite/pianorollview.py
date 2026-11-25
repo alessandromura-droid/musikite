@@ -26,6 +26,10 @@ a semitone, Shift an octave; left/right a grid step), Ctrl+Q quantize.
 Mouse wheel: scroll pitch; Shift+wheel: scroll time; Ctrl/Cmd+wheel: zoom time;
 Alt+wheel: zoom pitch. Click on the bar numbers = cursor at that bar (the next Play
 begins there after one count-in bar); double click on them = play from that bar.
+EDITOR TOOLS (owner, 2026-11-25; tools=True, the Midi editor — not the Free player, whose
+recorder keeps its own tempo): Bars… (insert / delete bars), Double… (every value twice as
+long), Resample… (the track as a line of equal values), Quantize from playing (timing taken
+from the playing of the track); all undoable (pianoroll.Roll).
 """
 import time
 
@@ -42,12 +46,15 @@ PREVIEW_CH = 14                 # synth channel of the note preview (keyboard: 1
 class PianoRollView:
     last_quantize = dict(grid="1/16", strength=100, ends=False)   # remembered in the session
 
-    def __init__(self, obj, title=None, on_change=None):
+    def __init__(self, obj, title=None, on_change=None, tools=False, end_q=None):
         """obj: Midi object (its notes are replaced at every edit) or a Roll.
-        on_change(roll): called after every edit."""
+        on_change(roll): called after every edit. tools=True: the editor tools (Bars…,
+        Double…, Resample…, Quantize from playing). end_q: length (quarters) if longer
+        than the notes."""
         from .midi import Midi
         self.midi = obj if isinstance(obj, Midi) else None
-        self.roll = obj if isinstance(obj, Roll) else Roll.from_midi(obj)
+        self.tools = bool(tools)
+        self.roll = obj if isinstance(obj, Roll) else Roll.from_midi(obj, end_q=end_q)
         self.title = title or self.roll.title or getattr(obj, "title", None) or "Piano roll"
         self.on_change = on_change
         self.position = 0.0
@@ -78,60 +85,58 @@ class PianoRollView:
         self.win.setWindowTitle(self.title)
         central = QWidget()
         lay = QVBoxLayout(central)
-        lay.setContentsMargins(2, 2, 2, 2)
-        lay.setSpacing(2)
-        row = QHBoxLayout()
+        lay.setContentsMargins(0, 0, 0, 0)          # no useless space (owner, 2026-11-25)
+        lay.setSpacing(0)
+        # THE TOOL ROW (owner, 2026-11-25): the same bar as the one above (gui.bar:
+        # buttons as large as their text, no empty spaces, a new row when the width is
+        # not enough), on the light dark-blue pastel of the Edit row
+        from .gui.bar import action_bar
         self.tool_buttons = {}
-        grp = QButtonGroup(central)
-        grp.setExclusive(True)
-        for name, tip in (("Hand", "select, move, change length (drag the right edge)"),
-                          ("Pencil", "draw notes (one grid step; drag right = longer)"),
-                          ("Eraser", "delete the notes clicked / dragged over")):
-            b = QToolButton()
-            b.setText(name)
-            b.setToolTip(tip)
-            b.setCheckable(True)
-            grp.addButton(b)
-            row.addWidget(b)
-            self.tool_buttons[name] = b
-            b.toggled.connect(lambda on, n=name: on and self.set_tool(n))
         self.tool = "Hand"
-        self.tool_buttons["Hand"].setChecked(True)
-        row.addSpacing(12)
-        row.addWidget(QLabel("Grid:"))
         self.grid = QComboBox()
         self.grid.addItems(EDIT_GRIDS)
         self.grid.setCurrentText("1/16")
         self.grid.setToolTip("grid of the editing (Alt while dragging: free)")
         self.grid.currentIndexChanged.connect(lambda *_: self.canvas.update())
-        row.addWidget(self.grid)
-        row.addWidget(QLabel("Track:"))
         self.track_box = QComboBox()
         self.track_box.setToolTip("the track edited (the others are shown faded)")
         self.track_box.currentIndexChanged.connect(self._track_changed)
-        row.addWidget(self.track_box)
-        row.addWidget(QLabel("Velocity:"))
         self.vel = QSpinBox()
         self.vel.setRange(1, 127)
         self.vel.setValue(90)
         self.vel.setToolTip("velocity of new notes; with notes selected it changes them")
         self.vel.editingFinished.connect(self._velocity_changed)
-        row.addWidget(self.vel)
-        row.addSpacing(12)
-        for text, fn, tip in (("Undo", self.undo, "Ctrl+Z"), ("Redo", self.redo, "Ctrl+Shift+Z"),
-                              ("Delete", self.delete_selection, "delete the selected notes"),
-                              ("Quantize…", self.quantize_dialog,
-                               "move the notes onto a grid (Ctrl+Q)"),
-                              ("−", lambda: self.zoom(0.8), "zoom out (Ctrl+wheel)"),
-                              ("+", lambda: self.zoom(1.25), "zoom in (Ctrl+wheel)")):
-            b = QToolButton()
-            b.setText(text)
-            b.setToolTip(tip)
-            b.clicked.connect(lambda checked=False, fn=fn: fn())
-            row.addWidget(b)
-            self.tool_buttons[text] = b
-        row.addStretch(1)
-        lay.addLayout(row)
+        items = [("Hand", lambda: self.set_tool("Hand"),
+                  "select, move, change length (drag the right edge)"),
+                 ("Pencil", lambda: self.set_tool("Pencil"),
+                  "draw notes (one grid step; drag right = longer)"),
+                 ("Eraser", lambda: self.set_tool("Eraser"),
+                  "delete the notes clicked / dragged over"),
+                 QLabel("Grid:"), self.grid, QLabel("Track:"), self.track_box,
+                 QLabel("Velocity:"), self.vel,
+                 ("Undo", self.undo, "Ctrl+Z"), ("Redo", self.redo, "Ctrl+Shift+Z"),
+                 ("Delete", self.delete_selection, "delete the selected notes"),
+                 ("Quantize…", self.quantize_dialog, "move the notes onto a grid (Ctrl+Q)"),
+                 ("−", lambda: self.zoom(0.8), "zoom out (Ctrl+wheel)"),
+                 ("+", lambda: self.zoom(1.25), "zoom in (Ctrl+wheel)")]
+        if self.tools:
+            items += [("Bars…", self.bars_dialog, "insert empty bars / delete bars"),
+                      ("Double…", self.double_dialog,
+                       "every value twice as long (the piece has twice the bars)"),
+                      ("Resample…", self.resample_dialog,
+                       "the track as a line of equal values (one voice)"),
+                      ("Quantize from playing", self.quantize_from_playing,
+                       "for a piece played without metronome: the tempo and the grid taken "
+                       "from the playing of the track")]
+        self.tool_row, btn = action_bar(items, edit_row=True)
+        self.tool_buttons.update(btn)
+        grp = QButtonGroup(central)
+        grp.setExclusive(True)
+        for name in ("Hand", "Pencil", "Eraser"):
+            btn[name].setCheckable(True)
+            grp.addButton(btn[name])
+        btn["Hand"].setChecked(True)
+        lay.addWidget(self.tool_row)
         grid = QGridLayout()
         grid.setSpacing(0)
         self.canvas = _canvas_class()(self)
@@ -366,6 +371,169 @@ class PianoRollView:
         """Quantize… dialog: the result is shown at once while the options change;
         OK keeps it (Undo takes it back), Cancel restores the notes."""
         return _quantize_dialog(self, track)
+
+    # ---------------------------------------------------------- editor tools (2026-11-25)
+    def _tool_done(self, what):
+        """After an edit that may change tempo / bars: everything redrawn."""
+        self.selection = []
+        self.refresh_tracks()
+        self.set_position(min(self.position, self.roll.length_q()), follow=False)
+        self.changed(what)
+
+    def _tool_error(self, e):
+        self.status.setText(f"{type(e).__name__}: {e}  ")
+
+    def bars_dialog(self):
+        """Bars…: insert empty bars before a bar, or delete bars from / to (default: the
+        bar of the cursor)."""
+        from PySide6.QtWidgets import (QDialog, QFormLayout, QComboBox, QSpinBox,
+                                       QDialogButtonBox, QVBoxLayout, QLabel)
+        self.stop()
+        r = self.roll
+        nb = r.bars()
+        cur = int(self.position // r.bar_q) + 1
+        d = QDialog(self.win)
+        d.setWindowTitle("Bars")
+        lay = QVBoxLayout(d)
+        form = QFormLayout()
+        what = QComboBox()
+        what.addItems(["Insert empty bars", "Delete bars"])
+        bar = QSpinBox()
+        bar.setRange(1, nb + 1)
+        bar.setValue(min(cur, nb + 1))
+        many = QSpinBox()
+        many.setRange(1, 999)
+        many.setValue(1)
+        form.addRow("", what)
+        lbl_bar = QLabel("Before bar:")
+        form.addRow(lbl_bar, bar)
+        form.addRow("How many:", many)
+        lay.addLayout(form)
+        info = QLabel("")
+        info.setWordWrap(True)
+        info.setStyleSheet("color: gray")
+        lay.addWidget(info)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(d.accept)
+        bb.rejected.connect(d.reject)
+        lay.addWidget(bb)
+
+        def upd(*_):
+            ins = what.currentIndex() == 0
+            lbl_bar.setText("Before bar:" if ins else "From bar:")
+            bar.setMaximum(nb + 1 if ins else nb)
+            if ins:
+                info.setText(f"{many.value()} empty bar(s) before bar {bar.value()} "
+                             f"({nb + 1} = at the end); a note held across is cut and goes "
+                             "on after them")
+            else:
+                last = min(nb, bar.value() + many.value() - 1)
+                info.setText(f"bars {bar.value()}-{last} removed (notes starting there "
+                             "deleted, notes held into them shortened)")
+
+        what.currentIndexChanged.connect(upd)
+        bar.valueChanged.connect(upd)
+        many.valueChanged.connect(upd)
+        upd()
+        if d.exec() != QDialog.Accepted:
+            return None
+        try:
+            if what.currentIndex() == 0:
+                r.insert_bars(bar.value(), many.value())
+                self._tool_done(f"{many.value()} bar(s) inserted before bar {bar.value()}")
+            else:
+                last = min(nb, bar.value() + many.value() - 1)
+                r.delete_bars(bar.value(), last)
+                self._tool_done(f"bars {bar.value()}-{last} deleted")
+        except Exception as e:
+            self._tool_error(e)
+            return False
+        return True
+
+    def double_dialog(self):
+        """Double…: every value twice as long; 'Keep the speed' (default) doubles the
+        tempo too, so it sounds the same."""
+        from PySide6.QtWidgets import (QDialog, QCheckBox, QDialogButtonBox, QVBoxLayout,
+                                       QLabel)
+        self.stop()
+        d = QDialog(self.win)
+        d.setWindowTitle("Double")
+        lay = QVBoxLayout(d)
+        lbl = QLabel("Every value twice as long (all the tracks): the piece has twice the "
+                     "bars, written with longer values.")
+        lbl.setWordWrap(True)
+        lay.addWidget(lbl)
+        keep = QCheckBox("Keep the speed (the tempo is doubled too: it sounds the same)")
+        keep.setChecked(True)
+        lay.addWidget(keep)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(d.accept)
+        bb.rejected.connect(d.reject)
+        lay.addWidget(bb)
+        if d.exec() != QDialog.Accepted:
+            return None
+        try:
+            self.roll.double(keep_speed=keep.isChecked())
+            self.set_position(self.position * 2, follow=False)
+            self._tool_done("doubled" + (" (same speed)" if keep.isChecked() else ""))
+        except Exception as e:
+            self._tool_error(e)
+            return False
+        return True
+
+    def resample_dialog(self):
+        """Resample…: the track edited as a line of equal values (1/4, 1/8, 1/16)."""
+        from PySide6.QtWidgets import (QDialog, QFormLayout, QComboBox, QDialogButtonBox,
+                                       QVBoxLayout, QLabel)
+        self.stop()
+        r = self.roll
+        if not r.tracks or not r.tracks[self.track]["notes"]:
+            self.status.setText("no notes in this track  ")
+            return None
+        d = QDialog(self.win)
+        d.setWindowTitle("Resample")
+        lay = QVBoxLayout(d)
+        lbl = QLabel(f"Track {self.track + 1} {r.tracks[self.track]['name']}: at every step "
+                     "the note sounding nearest to it; one voice (in a chord the highest "
+                     "note).")
+        lbl.setWordWrap(True)
+        lay.addWidget(lbl)
+        form = QFormLayout()
+        step = QComboBox()
+        for t, q in (("1/4", 1.0), ("1/8", 0.5), ("1/16", 0.25)):
+            step.addItem(t, q)
+        step.setCurrentIndex(1)
+        form.addRow("Every:", step)
+        lay.addLayout(form)
+        bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        bb.accepted.connect(d.accept)
+        bb.rejected.connect(d.reject)
+        lay.addWidget(bb)
+        if d.exec() != QDialog.Accepted:
+            return None
+        try:
+            k = r.resample(self.track, step.currentData())
+            self._tool_done(f"resampled every {step.currentText()} ({k} notes)")
+        except Exception as e:
+            self._tool_error(e)
+            return False
+        return True
+
+    def quantize_from_playing(self):
+        """Quantize from playing: timing and tempo from the playing of the track (one
+        tempo; its commonest time between two onsets = an eighth). Undo takes it back."""
+        self.stop()
+        r = self.roll
+        if not r.tracks:
+            return None
+        try:
+            T0, bpm = r.quantize_from_playing(self.track)
+            self._tool_done(f"quantized from playing: eighth = {T0 * 1000:.0f} ms, "
+                            f"♩ = {bpm:.0f}")
+        except Exception as e:
+            self._tool_error(e)
+            return False
+        return True
 
     # ---------------------------------------------------------- sound
     def preview(self, pitch):
@@ -831,6 +999,12 @@ def _canvas_class():
             m.addAction("Delete", v.delete_selection).setEnabled(bool(v.selection))
             m.addAction("Quantize…", v.quantize_dialog)
             m.addAction("Select all", v.select_all)
+            if v.tools:
+                m.addSeparator()
+                m.addAction("Bars…", v.bars_dialog)
+                m.addAction("Double…", v.double_dialog)
+                m.addAction("Resample…", v.resample_dialog)
+                m.addAction("Quantize from playing", v.quantize_from_playing)
             m.addSeparator()
             m.addAction("Undo", v.undo).setEnabled(v.roll.can_undo)
             m.addAction("Redo", v.redo).setEnabled(v.roll.can_redo)

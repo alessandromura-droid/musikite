@@ -400,6 +400,18 @@ class PlayOver:
         return f"play_along:{self.uid}:{self.graded()}"
 
     # ---------------------------------------------------------- object
+    def edited(self, midi):
+        """EDITED IN THE PIANO ROLL (owner, 2026-11-25): a NEW Play over MIDI with the
+        edited MIDI, the same tracks (those still readable), tempo %, volume, click, grade;
+        the bars to play are reset (the bars may have changed). Title "… – edited"."""
+        new = PlayOver(_b64(midi.pm), None, source=self.source, tempo_pct=self.tempo_pct,
+                       volume_pct=self.volume_pct, click=self.click, grade=self.grade)
+        new.set_tracks(self.tracks)
+        if self.graded_track in new.tracks:
+            new.graded_track = self.graded_track
+        new.title = f"{self.title} – edited"
+        return new
+
     def copy(self):
         return PlayOver(self.midi_b64, list(self.tracks), self.title, self.source,
                         self.tempo_pct, self.volume_pct, self.click,

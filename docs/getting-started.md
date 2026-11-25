@@ -24,7 +24,7 @@ The window never grows by itself: long scores scroll inside their tab.
 | Menu | Contents |
 |---|---|
 | **File** | Open… (MIDI, PDF, MusicXML, exercises .mke, routines .mkr, workspaces; several files at once), Save object as…, New / Open / Save workspace, Print… (Cmd+P) |
-| **Edit** | Rename, Remove the selected objects |
+| **Edit** | Edit MIDI (the [piano roll](free-player.md#piano-roll) of the selected MIDI, exercise or Play over MIDI), Rename, Remove the selected objects |
 | **View** | View / Play the selected object, Stop sound (Esc), Loop playback, show / hide panels |
 | **Generate** | Make new material: [duets, canons, exercises to do, routines](generate.md) |
 | **Convert** | Turn one object into another: [PDF → MIDI, fingerings, MIDI → score / PDF, merge, transpose](convert.md) |
@@ -120,7 +120,7 @@ This difference runs through the whole app:
 Inside an exercise tab the buttons are in one bar (one row, or two when the window is
 narrow): **Start** (it becomes **Stop** while the exercise runs), **Again**, **Keep**,
 **Zoom +** / **Zoom −**, **Click**, plus the pieces of that exercise (◀ ▶ in a routine,
-New, bpm, input, Edit…).
+New, bpm, input, Variant…).
 
 A new object (generated, converted, opened, a variant…) is **selected** in Objects at once.
 

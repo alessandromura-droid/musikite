@@ -79,3 +79,12 @@ reports it.
 
 Objects belong to the **current user**: check the user in the toolbar. The last workspace
 of every user is saved automatically and reopened at the next start.
+
+## A MIDI takes long to show
+
+The first time a long MIDI with many parts is shown, its notation is made from the MIDI;
+meanwhile the **first 8 bars** appear at once and the status says "the rest is loading…";
+the whole score takes their place by itself (Play already plays everything). The result
+is kept: the next time the same MIDI opens at once, also after restarting MusiKitE. The
+kept scores are in `~/.musikite/cache/scores` (at most 500 MB, the oldest removed first);
+the folder can be deleted at any time.

@@ -35,6 +35,9 @@ def _app():
     """The QApplication, with the MusiKitE icon (windows and, on macOS, the Dock)."""
     from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QIcon
+    from ..macos import hide_system_edit_items
+    if QApplication.instance() is None:
+        hide_system_edit_items()        # macOS: no Emoji / Dictation / AutoFill in Edit
     app = QApplication.instance() or QApplication([])
     if os.path.isfile(ICON):
         app.setWindowIcon(QIcon(ICON))
@@ -527,8 +530,10 @@ class App:
         self._hold_new_preview = False         # run_tool: show only the last one, at the end
         self._preview_timer = _QTimer(w)
         self._preview_timer.setSingleShot(True)
-        # waits for a possible second click (double click = open, not preview)
-        self._preview_timer.setInterval(_QA.doubleClickInterval() + 20)
+        # PREVIEW AT ONCE (owner, 2026-11-24): it no longer waits for the double-click time
+        # (0.4-0.5 s on macOS); only for the empty page to be drawn. A double click then
+        # opens the object and the Preview disappears (another tab in front)
+        self._preview_timer.setInterval(30)
         self._preview_timer.timeout.connect(self._preview_now)
         self.tabs.currentChanged.connect(self._tab_changed)
 
@@ -661,6 +666,9 @@ class App:
         self._day_timer.timeout.connect(self._day_watch)
         self._day_timer.start()
         self._lock_user(self.user)
+        # the staff and the score cache write their timings / errors in the Log (2026-11-24)
+        from .. import staffview as _sv, scorecache as _sc
+        _sv.LOG = _sc.LOG = self.log
         self.log(f"{APP_NAME} ready. User: {self.user or 'none'}. Soundfont: "
                  + (Midi._default_sf2 or "none (Settings > Soundfont…)"))
         for m in getattr(self, "_early_log", []):
@@ -698,7 +706,10 @@ class App:
         m.addSeparator()
         add(m, "Quit", self.win.close, "Ctrl+Q")
 
-        m = mb.addMenu("&Edit")
+        from ..macos import edit_menu_title
+        m = mb.addMenu(edit_menu_title())     # macOS: not recognised by AppKit, no AutoFill
+        add(m, "Edit MIDI", lambda: self.edit_object())        # owner, 2026-11-25
+        m.addSeparator()
         add(m, "Rename object…", self.rename_object_dialog)
         add(m, "Remove object", self.remove_selected_object)
 
@@ -722,34 +733,27 @@ class App:
             if not tools:
                 a = m.addAction("(no tools yet)")
                 a.setEnabled(False)
-            # FAMILY SUBMENUS (owner, 2026-11-24): Practice and Generate are split into
-            # "All instruments", "Brass", "Woodwinds", "Piano" (empty ones not shown)
-            fam = {}
-            if cat in registry.FAMILY_CATEGORIES:
-                for f in registry.FAMILY_MENUS:
-                    if any(f in registry.families_of(t) for t in tools):
-                        fam[f] = m.addMenu(f)
+            # NO FAMILY SUBMENUS (owner, 2026-11-24): every tool in its menu; one not for
+            # the instrument beside the user is greyed (`_update_tool_actions`). The only
+            # submenu is that of the exercises in Generate (`Tool.submenu`).
             subs = {}
             for t in tools:
-                parents = ([fam[f] for f in registry.families_of(t) if f in fam]
-                           if fam else [m])
-                for parent in parents:
-                    target = parent
-                    if t.submenu:
-                        key = (id(parent), t.submenu)
-                        if key not in subs:
-                            subs[key] = parent.addMenu(t.submenu)
-                        target = subs[key]
-                    a = add(target, t.label + (" (to do)" if t.kind == "planned" else ""),
-                            lambda checked=False, n=t.name: self.open_tool(n))
-                    self._tool_actions.setdefault(t.name, a)
-                    self._tool_action_list.append((t.name, a))
+                target = m
+                if t.submenu:
+                    if t.submenu not in subs:
+                        subs[t.submenu] = m.addMenu(t.submenu)
+                    target = subs[t.submenu]
+                a = add(target, t.label + (" (to do)" if t.kind == "planned" else ""),
+                        lambda checked=False, n=t.name: self.open_tool(n))
+                self._tool_actions.setdefault(t.name, a)
+                self._tool_action_list.append((t.name, a))
 
         m = mb.addMenu("&Settings")             # one window with every setting (VLC style)
         add(m, "Settings…", lambda: self.settings(), "Ctrl+,")
 
         m = mb.addMenu("&Help")
         add(m, "Manual", lambda: self.open_manual(), "F1")
+        add(m, "Install command-line tool…", lambda: self.cli_tool_dialog())
         add(m, "About", lambda: self.message(APP_NAME,
                                             "Container of music tools.\nTools: " +
                                             ", ".join(t.label for t in registry.TOOLS.values())))
@@ -847,8 +851,9 @@ class App:
                     self.log(f"instrument change: {type(e).__name__}: {e}")
 
     def _update_tool_actions(self):
-        """Menu items of the tools that do not fit the instrument are disabled (lip slurs:
-        valve brass only; long tones: wind instruments only)."""
+        """Menu items of the tools that do not fit the instrument are disabled, greyed (lip
+        slurs: valve brass only; long tones: wind instruments only; duet, canon, brass trio /
+        quartet: brass; Free player: piano — `registry.is_available`)."""
         from .. import instruments as ins
         key = ins.current()
         for name, a in getattr(self, "_tool_action_list", []):
@@ -1660,6 +1665,8 @@ class App:
         if single and is_exercise(objs[0]):
             add("Do it", lambda: self.open_object())      # = double click
         add("View", lambda: self.view_object(), single)
+        if single and self.editable(objs[0]):
+            add("Edit", lambda: self.edit_object())            # owner, 2026-11-25
         add("Stop" if self.obj_buttons["Play"].text() == "Stop" else "Play", self.toggle_play, single)
         add("Save", lambda: self.save_selected(quick=True))
         add("Save as…", lambda: self.save_selected(quick=False))
@@ -2064,7 +2071,11 @@ class App:
             if isinstance(obj, Phrase):
                 return self._staff_preview(name, obj.to_score())
             if isinstance(obj, (Score, Midi)):
-                return self._staff_preview(name, obj)
+                import time as _t
+                t0 = _t.perf_counter()
+                sv = self._staff_preview(name, obj)
+                self.log(f"preview {name}: {_t.perf_counter() - t0:.2f}s in all")
+                return sv
             if isinstance(obj, Pdf):
                 from .viewers import pdf_view
                 w = pdf_view(obj.path)
@@ -2133,6 +2144,99 @@ class App:
             return None
         self.log(f"{name}: no viewer for {type(obj).__name__}")
         return None
+
+    # ---------------------------------------------------------- Edit (piano roll)
+    def editable(self, obj):
+        """EDIT (owner, 2026-11-25): what has a MIDI to edit in the piano roll — a Midi ♪
+        (not a recording Notes ≈), an exercise ♩ of Read & play / Listen & repeat, a
+        Play over MIDI ♬. Not: Score, Pdf, groups (one exercise at a time), drills and
+        quizzes ◆, routines."""
+        from ..midi import Midi
+        from ..notes import Notes
+        from ..phrase import Phrase
+        if isinstance(obj, Midi):
+            return not isinstance(obj, Notes)
+        return isinstance(obj, Phrase) or type(obj).__name__ == "PlayOver"
+
+    def edit_object(self, name=None):
+        """Edit MIDI / right click > Edit (owner, 2026-11-25). A Midi: its tab on the
+        piano roll, the edits go into the object itself (as the Edit button of its tab).
+        An exercise ♩ / a Play over MIDI ♬: a COPY of its MIDI in the piano roll (tab
+        "Edit: <name>", concert pitch); "Save as new" makes a NEW object (an edited
+        exercise is another exercise), the original never changes."""
+        from ..midi import Midi
+        from ..phrase import Phrase, ExerciseSet
+        name = self._name(name)
+        if name is None:
+            return None
+        try:
+            obj = self.get_object(name)
+            if isinstance(obj, ExerciseSet):
+                raise TypeError("an exercise set: select one of its exercises")
+            if not self.editable(obj):
+                raise TypeError(f"{type(obj).__name__} has no MIDI to edit")
+            if isinstance(obj, Midi):
+                from .midiview import MidiView
+                sv = self._view_for(name)
+                if isinstance(sv, MidiView):
+                    self.tabs.setCurrentWidget(sv.win)
+                else:
+                    sv = self.view_object(name)
+                if isinstance(sv, MidiView):
+                    sv.edit()
+                return sv
+            if isinstance(obj, Phrase):
+                q = obj.copy()
+                q.bpm = float(obj.practice_bpm or obj.bpm)
+                m = q.to_midi()
+
+                def save(midi, length, ph=obj, src=name):
+                    from ..phrase import edited
+                    new, info = edited(ph, midi, length)
+                    n = self.add_object(new, new.title)
+                    extra = []
+                    if info["chords"]:
+                        extra.append(f"{info['chords']} chord notes removed (one voice)")
+                    if info["outside"]:
+                        extra.append(f"{info['outside']} notes outside your range of the "
+                                     "instrument")
+                    self.log(f"{src}: edited exercise saved as {n} ({new.bars} bars)"
+                             + (": " + "; ".join(extra) if extra else ""))
+                    return n
+                return self._edit_copy(m, name, obj.length_q, save)
+            po = obj                                          # Play over MIDI
+
+            def save_po(midi, length, po=po, src=name):
+                new = po.edited(midi)
+                n = self.add_object(new, new.title)
+                self.log(f"{src}: edited Play over MIDI saved as {n}")
+                return n
+            return self._edit_copy(po.midi(), name, None, save_po)
+        except Exception as e:
+            self.log(f"edit {name}: {type(e).__name__}: {e}")
+            return None
+
+    def _edit_copy(self, midi, name, end_q, on_save):
+        """Tab "Edit: <name>" on the piano roll of a copy (MidiView edit=True)."""
+        from .midiview import MidiView
+        key = f"edit: {name}"
+        w = self.tool_widgets.get(key)
+        if w is not None and self.tabs.indexOf(w) >= 0:
+            self.tabs.setCurrentWidget(w)
+            return self.views.get(w)
+        title = f"Edit: {name}"
+        midi.title = name
+        sv = MidiView(midi, title, app=self, edit=True, end_q=end_q, on_save=on_save)
+        sv.obj_name = None                    # not the object: Play in Objects never plays it
+        sv.win.bar = sv.make_bar()
+        sv.win.closing = sv.closing           # edits not saved: asked when the tab closes
+        sv.win.space_bar = sv.space_bar       # space bar = start / stop (owner, 2026-11-25)
+        self.views[sv.win] = sv
+        self.tool_widgets[key] = sv.win
+        self.add_tab(sv.win, title)
+        self.log(f"{name}: editing a copy in the piano roll (concert pitch); Save as new = "
+                 "a new object, the original stays as it is")
+        return sv
 
     def _as_midi(self, obj):
         from ..score import Score
@@ -2213,17 +2317,27 @@ class App:
         self._playing = sv
         # LOOP (View > Loop playback): A once, B for about 10 minutes, C once, as one
         # sequence for the synth (StaffView / PianoRollView .loop); it ends after C — only
-        # when it starts from the beginning
+        # when it starts from the beginning. EXERCISES NEVER LOOP (owner, 2026-11-24: the
+        # objects of Objects > Exercises, e.g. generated exercises, melodies and etudes):
+        # only the material (MIDI, scores, PDF) does.
         sv.on_end = None
-        sv.loop = self.play_loop()
+        sv.loop = self.play_loop() and not self._is_exercise_name(name)
         if start is None:
             sv.set_position(0)
             sv.listen(start=0, count_in=0)
         else:
             sv.listen(start=start, count_in=1)
         self.log(f"playing {name}" + (f" from beat {start:g}" if start is not None else "")
-                 + (" (loop)" if self.play_loop() and not start else ""))
+                 + (" (loop)" if sv.loop and not start else ""))
         return sv
+
+    def _is_exercise_name(self, name):
+        """The object of that name is an exercise (Objects > Exercises): it never loops."""
+        from ..tasks import is_exercise
+        try:
+            return is_exercise(self.get_object(name))
+        except Exception:
+            return False
 
     def _double_click_plays(self, sv, name):
         """DOUBLE CLICK ON A BAR (owner, 2026-11-23): the object of this view is played
@@ -2738,6 +2852,70 @@ class App:
             prev(etype, value, tb)
         sys.excepthook = hook
 
+    # ---------------------------------------------------------- command-line tool (Mac app)
+    def cli_tool_dialog(self):
+        """Help > Install command-line tool… (owner, 2026-11-24; logic cli_install.py): the
+        line for ~/.zshrc shown, written only if confirmed; Remove when it is there."""
+        from PySide6.QtWidgets import QMessageBox
+        from .. import cli_install as ci
+        if not ci.is_app():
+            return self.message("Command-line tool",
+                                "From the source code the command 'musikite' is made by "
+                                "./install.sh in the project folder (pip, conda base).")
+        if not ci.in_applications():
+            return self.message("Command-line tool",
+                                "Move MusiKitE to the Applications folder first, then open it "
+                                f"from there (now it is in {ci.app_path()}).")
+        box = QMessageBox(self.win)
+        box.setWindowTitle("Command-line tool")
+        cur = ci.installed_path()
+        other = ci.other_command()
+        text = ("The command <b>musikite</b> in Terminal (duet, canon, pdf, fingering, merge, "
+                "view…; <b>man musikite</b> for the manual) is made by ONE line at the end of "
+                f"<tt>~/.zshrc</tt>:<br><br><tt>{ci.line()}</tt><br><br>It takes effect in a "
+                "NEW Terminal window. To undo: Remove (here) or delete that line.")
+        if other:
+            text += (f"<br><br><b>Note:</b> a Terminal already finds another musikite "
+                     f"(<tt>{other}</tt>, e.g. the one of install.sh): with two of them the "
+                     "first in the PATH is used.")
+        if cur and not ci.moved():
+            text = f"The command-line tool is installed (<tt>{cur}</tt>).<br><br>" + text
+        elif cur:
+            text = (f"The line in ~/.zshrc points to an old place of the app (<tt>{cur}</tt>):"
+                    " Install replaces it.<br><br>" + text)
+        box.setText(text)
+        b_inst = box.addButton("Install" if not cur or ci.moved() else "Install again",
+                               QMessageBox.AcceptRole)
+        b_rem = box.addButton("Remove", QMessageBox.DestructiveRole) if cur else None
+        box.addButton(QMessageBox.Cancel)
+        box.exec()
+        try:
+            if box.clickedButton() is b_inst:
+                ln = ci.install()
+                self.log(f"command-line tool: added to ~/.zshrc: {ln}")
+                self.message("Command-line tool", "Done: open a new Terminal window and try "
+                             "'musikite --help' or 'man musikite'.")
+            elif b_rem is not None and box.clickedButton() is b_rem:
+                ci.uninstall()
+                self.log("command-line tool: the MusiKitE line removed from ~/.zshrc")
+                self.message("Command-line tool", "Removed (from the next Terminal window).")
+        except Exception as e:
+            self.log(f"command-line tool: {type(e).__name__}: {e}")
+            self.message("Command-line tool", f"{type(e).__name__}: {e}")
+
+    def _cli_moved_check(self):
+        """At every start of the app: the ~/.zshrc line points to another place (the app was
+        moved) -> the user is told and Help > Install command-line tool… offered."""
+        try:
+            from .. import cli_install as ci
+            old = ci.moved()
+        except Exception:
+            return
+        if old:
+            self.log(f"command-line tool: ~/.zshrc points to {old}, the app is now in "
+                     f"{ci.app_path()}")
+            self.cli_tool_dialog()
+
     def message(self, title, text):
         from PySide6.QtWidgets import QMessageBox
         QMessageBox.information(self.win, title, text)
@@ -2754,6 +2932,8 @@ class App:
 
     def run(self):
         self.win.show()
+        from PySide6.QtCore import QTimer
+        QTimer.singleShot(1500, self._cli_moved_check)      # the app was moved (Mac app)
         _app().exec()
         return self
 

@@ -59,8 +59,8 @@ come out late, set *Recording offset* in [Settings > Audio](settings.md#audio).
 
 ## Piano roll
 
-The piano roll edits a recording or any MIDI (button **Piano roll** in the tab of a MIDI;
-**Staff** goes back). Time runs left to right with the bar numbers; pitch bottom to top with
+The piano roll edits a recording or any MIDI (button **Edit** in the tab of a MIDI, right
+click > **Edit**, or Edit > **Edit MIDI**; **Staff** goes back). Time runs left to right with the bar numbers; pitch bottom to top with
 a keyboard on the left (click a key to hear it). One colour per track; the other tracks are
 faded; louder notes are darker; selected notes are orange. Click a bar number: the next
 Play begins at that bar after one count-in bar; double-click it: it plays from there at once
@@ -107,5 +107,18 @@ Notes you move or draw are heard with the instrument of the track.
 The result is shown at once while you change the options; **OK** keeps it (Undo takes it
 back), **Cancel** restores. Tip: on a mixed grid (1/8+1/8T) a light swing can come out half
 triplets and half straight eighths; use a single grid or a strength below 100 %.
+
+### Editor tools (MIDI, exercises, Play over MIDI)
+
+In the piano roll of a MIDI (not of the Free player's recording) four more tools, in the
+row and in the right-click menu; Undo takes each one back. Tempo changes, time and key
+signatures and controllers move with the notes.
+
+| Tool | What it does |
+|---|---|
+| **Bars…** | *Insert empty bars* before a bar (the last number = at the end; a note held across that point is cut and goes on after the new bars) or *Delete bars* (notes starting in them are deleted, notes held into them shortened, the rest moves back). Bars are counted as the numbers drawn (the first time signature). |
+| **Double…** | Every value twice as long, all tracks: the piece has twice the bars. *Keep the speed* (on) doubles the tempo too, so it sounds the same. |
+| **Resample…** | The current track becomes a line of equal values (1/4, 1/8, 1/16): at every step the note sounding nearest; one voice. |
+| **Quantize from playing** | For music played **without metronome**: the commonest time between two notes of the current track becomes an eighth, every note goes onto that grid and lasts to the next one; the other tracks follow; the piece gets one tempo. Quantize… (above) uses a fixed grid instead. |
 
 After quantising, *Convert > MIDI → Score* gives clean notation.

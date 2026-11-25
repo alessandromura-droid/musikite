@@ -46,7 +46,7 @@ Everything is in **one bar** at the top (one row, or two when the window is narr
 take of the same phrase; afterwards: the same exercises again), **New** (quick tab only),
 **Zoom + / −**, **Click** (the beat of the bar in colour, and the audio click on / off,
 also during a take: see [The Click button](getting-started.md#the-click-button)),
-**bpm**, the input (*Microphone* / *MIDI keyboard*), **Show positions**, **Edit** (see
+**bpm**, the input (*Microphone* / *MIDI keyboard*), **Show positions**, **Variant…** (see
 [Make a variant](#make-a-variant)) and the first note.
 
 In a block of several exercises the next one starts by itself, after a pause long enough to
@@ -85,7 +85,7 @@ Choose *MIDI keyboard* as Input (and the keyboard in Settings > Audio > MIDI inp
 
 ## Make a variant
 
-In a tab bound to **one** exercise cut from a MIDI, a score or the library, **Edit** in the
+In a tab bound to **one** exercise cut from a MIDI, a score or the library, **Variant…** in the
 bar opens the panel **Make a variant** on the right: bars from / to, part, simplify,
 transformation (the tempo is the **bpm** of the bar). The variant is a **new** exercise
 for the same instrument.
@@ -93,13 +93,26 @@ for the same instrument.
 - **Run**: the variant goes into Objects (selected), without results; the tab now works on
   it; the panel closes.
 - **Reset**: the values of the exercise again.
-- The panel also closes when you press **Edit** again, go to another tab or close the tab;
+- **Split** (under *Into two exercises*): two new exercises, the first half of the bars and
+  the second half.
+- **Adapt**: if a note is shorter than an eighth, every value becomes twice as long (easier
+  to read, same speed: the bpm is doubled too), then it is cut into two exercises.
+  Split and Adapt work on the exercise as it is (the fields above are not used); the tab
+  then works on the first of the two.
+- The panel also closes when you press **Variant…** again, go to another tab or close the tab;
   a click in Objects leaves it open.
 - The original exercise is **never changed**. A different bpm also makes a new exercise
   when you start it, because grades at different tempi are not comparable.
 
 Random exercises (made by the app) and exercises generated without the MIDI have no
-**Edit**: there is no source to cut again.
+**Variant…**: there is no source to cut again.
+
+To change the **notes** of an exercise use **Edit** (right click on it, or Edit > Edit
+MIDI): its MIDI opens in the [piano roll](free-player.md#piano-roll) in a tab "Edit: …";
+**Save as new** makes a **new** exercise (the original never changes). The piano roll
+shows **concert pitch** (a B♭ trumpet exercise looks a tone lower than written). Wind
+instruments play one voice: in a chord only the highest note is kept. An edited exercise
+no longer knows its MIDI: its Variant… offers only tempo and transposition.
 
 ## How a take is graded
 
